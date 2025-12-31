@@ -141,16 +141,15 @@ let currentWeek = 1;
 let expandedSessions = [false, false, false];
 let data = null;
 
+/* ---------- DATA ---------- */
+
 function saveData() {
     localStorage.setItem('trainingData', JSON.stringify(data));
 }
 
 function initData() {
     const saved = localStorage.getItem('trainingData');
-    if (saved) {
-        data = JSON.parse(saved);
-        return;
-    }
+    if (saved) { data = JSON.parse(saved); return; }
 
     data = { weeks: [] };
     const lifts = ['Squat', 'Bench', 'Deadlift'];
@@ -168,7 +167,11 @@ function initData() {
             week.sessions.push({
                 lift,
                 sets: [],
-                isolations: [{},{},{}]
+                isolations: [
+                    { name:'', sets:'', reps:'', weight:'' },
+                    { name:'', sets:'', reps:'', weight:'' },
+                    { name:'', sets:'', reps:'', weight:'' }
+                ]
             });
         });
 
@@ -177,38 +180,123 @@ function initData() {
     saveData();
 }
 
+/* ---------- CALCS ---------- */
+
 function calc1RM(w, r) {
     w = parseFloat(w); r = parseFloat(r);
     if (!w || !r) return 0;
     return Math.round(w * (1 + r / 30) * 10) / 10;
 }
 
-function render() {
-    const week = data.weeks[currentWeek - 1];
-    document.getElementById('weekTitle').textContent = 'Week ' + currentWeek;
-    document.getElementById('weekType').textContent = week.weekType;
-    document.getElementById('btnPrev').disabled = currentWeek === 1;
-    document.getElementById('btnNext').disabled = currentWeek === 12;
+function best1RM(session) {
+    let max = 0;
+    session.sets.forEach(s => {
+        const rm = calc1RM(s.weight, s.reps);
+        if (rm > max) max = rm;
+    });
+    return max;
+}
 
-    let grid = '';
+/* ---------- RENDER ---------- */
+
+function renderWeekButtons() {
+    let html = '';
     for (let i = 1; i <= 12; i++) {
-        grid += `<button class="week-btn ${i===currentWeek?'active':'inactive'}"
+        html += `<button class="week-btn ${i===currentWeek?'active':'inactive'}"
                  onclick="goToWeek(${i})">W${i}</button>`;
     }
-    weekGrid.innerHTML = grid;
+    weekGrid.innerHTML = html;
 }
+
+function renderSessions() {
+    const week = data.weeks[currentWeek - 1];
+    let html = '';
+
+    week.sessions.forEach((session, s) => {
+        const best = best1RM(session);
+
+        html += `
+        <div class="session-card">
+            <div class="session-header" onclick="toggleSession(${s})">
+                <h3>${session.lift}</h3>
+                <div style="font-size:14px;color:#666;">Est. 1RM: <strong>${best || '—'}</strong></div>
+            </div>
+            <div class="session-content ${expandedSessions[s]?'show':''}">
+                <h4>Main Sets</h4>
+        `;
+
+        session.sets.forEach((set, i) => {
+            const rm = calc1RM(set.weight, set.reps);
+            html += `
+            <div class="set-container">
+                <div class="input-group">
+                    <input type="number" placeholder="Weight" value="${set.weight||''}"
+                        onchange="updateSet(${s},${i},'weight',this.value)">
+                    <input type="number" placeholder="Reps" value="${set.reps||''}"
+                        onchange="updateSet(${s},${i},'reps',this.value)">
+                    ${rm ? `<div class="rm-display">1RM ${rm}</div>` : ''}
+                    <button class="delete-btn" onclick="removeSet(${s},${i})">Delete</button>
+                </div>
+            </div>`;
+        });
+
+        html += `
+            <button class="btn btn-primary btn-small" onclick="addSet(${s})">+ Add Set</button>
+            </div>
+        </div>`;
+    });
+
+    sessionsContainer.innerHTML = html;
+}
+
+function render() {
+    const week = data.weeks[currentWeek - 1];
+    weekTitle.textContent = 'Week ' + currentWeek;
+    weekType.textContent = week.weekType;
+    btnPrev.disabled = currentWeek === 1;
+    btnNext.disabled = currentWeek === 12;
+
+    renderWeekButtons();
+    renderSessions();
+}
+
+/* ---------- ACTIONS ---------- */
+
+window.toggleSession = i => { expandedSessions[i] = !expandedSessions[i]; render(); };
+
+window.addSet = s => {
+    data.weeks[currentWeek-1].sessions[s].sets.push({ weight:'', reps:'' });
+    saveData(); render();
+};
+
+window.removeSet = (s,i) => {
+    data.weeks[currentWeek-1].sessions[s].sets.splice(i,1);
+    saveData(); render();
+};
+
+window.updateSet = (s,i,f,v) => {
+    data.weeks[currentWeek-1].sessions[s].sets[i][f] = v;
+    saveData(); render();
+};
 
 window.changeWeek = d => { currentWeek += d; expandedSessions=[false,false,false]; render(); };
 window.goToWeek = w => { currentWeek = w; expandedSessions=[false,false,false]; render(); };
+
 window.resetAll = () => {
     if (confirm('Delete all data?')) {
         localStorage.removeItem('trainingData');
-        initData(); currentWeek=1; render();
+        initData(); currentWeek=1; expandedSessions=[false,false,false]; render();
     }
 };
 
+/* ---------- START ---------- */
+
 initData();
 render();
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js');
+}
 
 });
 </script>

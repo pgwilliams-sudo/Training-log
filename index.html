@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Training Logger</title>
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
@@ -16,16 +15,19 @@ h1,h3,h4{margin-bottom:10px}
 .input-group{display:flex;gap:8px;flex-wrap:wrap}
 input,select,textarea{padding:8px;border:1px solid #ccc;border-radius:6px}
 textarea{width:100%;margin-top:6px}
-.set,.iso{padding:10px;border-radius:6px;margin-bottom:6px}
+.set{padding:10px;border-radius:6px;margin-bottom:6px}
 .up{background:#dcfce7}
 .down{background:#fee2e2}
-.rm{font-size:12px;color:#0369a1;font-weight:600}
-.iso{background:#f8fafc}
+.ref{background:#f1f5f9;font-size:13px;padding:8px;border-radius:6px;margin-bottom:8px}
+.iso{background:#f8fafc;padding:8px;border-radius:6px;margin-bottom:6px}
 button{padding:8px 14px;border-radius:6px;border:none;background:#2563eb;color:white;margin-top:6px}
+button.secondary{background:#6b7280}
+.rmBox{background:#eff6ff;padding:10px;border-radius:6px;margin:10px 0;font-weight:600}
+.locked input{background:#e5e7eb}
 </style>
 </head>
-<body>
 
+<body>
 <div class="container">
 
 <div class="card">
@@ -66,9 +68,20 @@ let currentWeek=1;
 let cycle='Hybrid';
 const lifts=['Squat','Bench','Deadlift'];
 
+function calc1RM(w,r){
+w=parseFloat(w);r=parseFloat(r);
+return (!w||!r)?0:w*(1+r/30);
+}
+
+function avg1RM(sets){
+const vals=sets.map(s=>calc1RM(s.weight,s.reps)).filter(v=>v>0);
+if(!vals.length)return 0;
+return Math.round(vals.reduce((a,b)=>a+b)/vals.length);
+}
+
 function init(){
 const saved=localStorage.getItem('trainingData');
-if(saved){data=JSON.parse(saved);}
+if(saved)data=JSON.parse(saved);
 else resetAll(true);
 
 const w=document.getElementById('weekNum');
@@ -77,8 +90,8 @@ for(let i=1;i<=12;i++)w.innerHTML+=`<option>${i}</option>`;
 render();
 }
 
-function resetAll(skipConfirm){
-if(!skipConfirm && !confirm('Delete all data?'))return;
+function resetAll(skip){
+if(!skip && !confirm('Delete all data?'))return;
 localStorage.removeItem('trainingData');
 data={weeks:[],history:[]};
 for(let w=1;w<=12;w++){
@@ -93,6 +106,7 @@ isolations:[
 {name:'',sets:'',reps:'',weight:''},
 {name:'',sets:'',reps:'',weight:''}
 ],
+isoLocked:true,
 notes:''
 }))
 });
@@ -102,89 +116,73 @@ save(); render();
 
 function save(){localStorage.setItem('trainingData',JSON.stringify(data));}
 
-function changeCycle(c){
-cycle=c;
-forceGVTReps();
-render();
-}
+function changeCycle(c){cycle=c;applyGVT();render();}
+function changeWeekType(w){data.weeks[currentWeek-1].weekType=w;applyGVT();save();render();}
+function goWeek(w){currentWeek=parseInt(w);render();}
 
-function changeWeekType(w){
-data.weeks[currentWeek-1].weekType=w;
-forceGVTReps();
-save(); render();
-}
-
-function goWeek(w){currentWeek=parseInt(w); render();}
-
-function forceGVTReps(){
-const week=data.weeks[currentWeek-1];
-if(week.weekType!=='GVT')return;
+function applyGVT(){
+const wk=data.weeks[currentWeek-1];
+if(wk.weekType!=='GVT')return;
 const reps=cycle==='Hybrid'?10:5;
-week.sessions.forEach(s=>{
+wk.sessions.forEach(s=>{
 s.sets=[];
 for(let i=0;i<10;i++)s.sets.push({weight:'',reps});
 });
 }
 
-function calc1RM(w,r){
-w=parseFloat(w);r=parseFloat(r);
-return (!w||!r)?0:Math.round(w*(1+r/30));
-}
-
 function render(){
+const wk=data.weeks[currentWeek-1];
 document.getElementById('cycle').value=cycle;
-document.getElementById('weekType').value=data.weeks[currentWeek-1].weekType;
+document.getElementById('weekType').value=wk.weekType;
 document.getElementById('weekNum').value=currentWeek;
 
-const week=data.weeks[currentWeek-1];
 let html='';
-
-week.sessions.forEach((s,si)=>{
+wk.sessions.forEach((s,si)=>{
 const prev=data.history.slice().reverse()
-  .find(h=>h.lift===s.lift && h.weekType===week.weekType);
+.find(h=>h.lift===s.lift && h.weekType===wk.weekType);
 
-const sets=(week.weekType==='GVT')?10:5;
-
+const sets=(wk.weekType==='GVT')?10:5;
 html+=`<div class="card"><h3>${s.lift}</h3>`;
 
-// MAIN SETS
-for(let i=0;i<sets;i++){
-s.sets[i]=s.sets[i]||{weight:'',reps:''};
-let cls='';
-if(prev&&prev.sets[i]){
-if(s.sets[i].weight>prev.sets[i].weight||s.sets[i].reps>prev.sets[i].reps)cls='up';
-if(s.sets[i].weight<prev.sets[i].weight||s.sets[i].reps<prev.sets[i].reps)cls='down';
+// Previous reference
+if(prev){
+html+=`<div class="ref"><strong>Previous Equivalent Session</strong><br>`;
+prev.sets.forEach((ps,i)=>html+=`Set ${i+1}: ${ps.weight} × ${ps.reps}<br>`);
+html+=`</div>`;
 }
 
+const avgRM=avg1RM(s.sets);
+if(avgRM>0)html+=`<div class="rmBox">Session Estimated 1RM: ${avgRM}</div>`;
+
+for(let i=0;i<sets;i++){
+s.sets[i]=s.sets[i]||{weight:'',reps:''};
 html+=`
-<div class="set ${cls}">
+<div class="set">
 <input type="number" placeholder="kg" value="${s.sets[i].weight}" onchange="upd(${si},${i},'weight',this.value)">
 <input type="number" placeholder="reps" value="${s.sets[i].reps}" onchange="upd(${si},${i},'reps',this.value)">
-<span class="rm">1RM ${calc1RM(s.sets[i].weight,s.sets[i].reps)}</span>
 </div>`;
 }
 
 // ISOLATIONS
-html+=`<h4>Isolation Exercises</h4>`;
+html+=`<h4>Isolation Exercises</h4>
+<button class="secondary" onclick="toggleIso(${si})">
+${s.isoLocked?'Edit Isolation Exercises':'Lock Isolation Exercises'}
+</button>`;
+
 s.isolations.forEach((iso,ii)=>{
 const prevIso=prev?.isolations?.[ii]||{};
+const val=f=>iso[f]||prevIso[f]||'';
 html+=`
-<div class="iso">
-<input placeholder="Exercise" value="${iso.name||prevIso.name||''}"
- onchange="isoUpd(${si},${ii},'name',this.value)">
-<input type="number" placeholder="Sets" value="${iso.sets||prevIso.sets||''}"
- onchange="isoUpd(${si},${ii},'sets',this.value)">
-<input type="number" placeholder="Reps" value="${iso.reps||prevIso.reps||''}"
- onchange="isoUpd(${si},${ii},'reps',this.value)">
-<input type="number" placeholder="Weight" value="${iso.weight||prevIso.weight||''}"
- onchange="isoUpd(${si},${ii},'weight',this.value)">
+<div class="iso ${s.isoLocked?'locked':''}">
+<input ${s.isoLocked?'readonly':''} placeholder="Exercise" value="${val('name')}" onchange="isoUpd(${si},${ii},'name',this.value)">
+<input ${s.isoLocked?'readonly':''} type="number" placeholder="Sets" value="${val('sets')}" onchange="isoUpd(${si},${ii},'sets',this.value)">
+<input ${s.isoLocked?'readonly':''} type="number" placeholder="Reps" value="${val('reps')}" onchange="isoUpd(${si},${ii},'reps',this.value)">
+<input ${s.isoLocked?'readonly':''} type="number" placeholder="Weight" value="${val('weight')}" onchange="isoUpd(${si},${ii},'weight',this.value)">
 </div>`;
 });
 
-// NOTES
 html+=`
-<textarea maxlength="260" placeholder="Session notes (max 260 chars)"
- onchange="note(${si},this.value)">${s.notes||''}</textarea>
+<textarea maxlength="260" placeholder="Session notes" onchange="note(${si},this.value)">${s.notes||''}</textarea>
 <button onclick="complete(${si})">Complete Session</button>
 </div>`;
 });
@@ -193,26 +191,21 @@ document.getElementById('sessions').innerHTML=html;
 renderChart();
 }
 
-function upd(s,i,f,v){
-data.weeks[currentWeek-1].sessions[s].sets[i][f]=v;
-save(); render();
-}
-function isoUpd(s,i,f,v){
-data.weeks[currentWeek-1].sessions[s].isolations[i][f]=v;
-save();
-}
-function note(s,v){data.weeks[currentWeek-1].sessions[s].notes=v; save();}
+function upd(s,i,f,v){data.weeks[currentWeek-1].sessions[s].sets[i][f]=v;save();render();}
+function isoUpd(s,i,f,v){data.weeks[currentWeek-1].sessions[s].isolations[i][f]=v;save();}
+function toggleIso(s){const sess=data.weeks[currentWeek-1].sessions[s];sess.isoLocked=!sess.isoLocked;save();render();}
+function note(s,v){data.weeks[currentWeek-1].sessions[s].notes=v;save();}
 
 function complete(s){
 const wk=data.weeks[currentWeek-1];
-data.history.push({
+data.history.push(JSON.parse(JSON.stringify({
 lift:wk.sessions[s].lift,
 weekType:wk.weekType,
 weekNum:wk.weekNum,
-sets:JSON.parse(JSON.stringify(wk.sessions[s].sets)),
-isolations:JSON.parse(JSON.stringify(wk.sessions[s].isolations))
-});
-save(); render();
+sets:wk.sessions[s].sets,
+isolations:wk.sessions[s].isolations
+})));
+save();render();
 }
 
 function renderChart(){
@@ -220,12 +213,11 @@ const ctx=document.getElementById('chart');
 const ds=lifts.map((l,i)=>({
 label:l,
 data:data.history.filter(h=>h.lift===l)
-.map(h=>calc1RM(h.sets[0].weight,h.sets[0].reps)),
+.map(h=>avg1RM(h.sets)),
 borderColor:['#2563eb','#dc2626','#16a34a'][i],
 tension:.3
 }));
-new Chart(ctx,{type:'line',
-data:{labels:data.history.map(h=>`W${h.weekNum}`),datasets:ds}});
+new Chart(ctx,{type:'line',data:{labels:data.history.map(h=>`W${h.weekNum}`),datasets:ds}});
 }
 
 init();

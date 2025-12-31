@@ -17,10 +17,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:-apple-system, BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; background:#f5f5f5; padding:20px;}
-.container { max-width:1200px; margin:0 auto; }
-.card { background:white; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.1); margin-bottom:20px; padding:20px;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#f5f5f5;padding:20px;}
+.container{max-width:1200px;margin:0 auto;}
+.card{background:white;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);margin-bottom:20px;padding:20px;}
 h1{font-size:28px;margin-bottom:8px;color:#333;}
 h2{font-size:24px;color:#333;}
 h3{font-size:20px;color:#333;margin-bottom:10px;}
@@ -32,12 +32,14 @@ h4{font-size:16px;color:#555;margin-bottom:10px;font-weight:600;}
 .btn-small{padding:8px 12px;font-size:13px;}
 .input-group{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
 input, select{padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;}
-.input-lift { width:80px; }
-.input-reps { width:60px; }
-.input-weight { width:80px; }
-.set-container, .iso-container { background:#fff; padding:10px; border-radius:6px; margin-bottom:8px;}
-.rm-display { padding:5px 8px; background:#f0f9ff; border-radius:6px; color:#0369a1; font-weight:600; font-size:13px;}
-.chart-container { margin-top:20px;}
+.input-lift{width:80px;}
+.input-reps{width:60px;}
+.input-weight{width:80px;}
+.set-container,.iso-container{background:#fff;padding:10px;border-radius:6px;margin-bottom:8px;}
+.rm-display{padding:5px 8px;background:#f0f9ff;border-radius:6px;color:#0369a1;font-weight:600;font-size:13px;}
+.highlight-up{background-color:#dcfce7;}
+.highlight-down{background-color:#fee2e2;}
+.chart-container{margin-top:20px;}
 </style>
 </head>
 <body>
@@ -51,13 +53,13 @@ input, select{padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:
 
 <div class="card">
 <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-<label>Training Cycle: 
+<label>Training Cycle:
 <select id="cycleSelect" onchange="changeCycle(this.value)">
 <option value="Hybrid">Hybrid</option>
 <option value="Strength">Strength</option>
 </select></label>
 
-<label>Week Type: 
+<label>Week Type:
 <select id="weekSelect" onchange="changeWeekType(this.value)">
 <option value="GVT">GVT</option>
 <option value="Core Session">Core Session</option>
@@ -90,18 +92,15 @@ let weekType='GVT';
 let data=null;
 const lifts=['Squat','Bench','Deadlift'];
 
-// INIT DATA
-function saveData(){ localStorage.setItem('trainingData',JSON.stringify(data)); }
+// Init Data
+function saveData(){localStorage.setItem('trainingData',JSON.stringify(data));}
 function initData(){
 const saved=localStorage.getItem('trainingData');
-if(saved){ data=JSON.parse(saved);} 
-else { data={weeks:[],history:[],meta:{cycle:1}};}
+if(saved){data=JSON.parse(saved);} else {data={weeks:[],history:[],meta:{cycle:1}};}
 if(!data.weeks.length){
 for(let w=1;w<=12;w++){
 let week={weekNum:w,weekType:'GVT',sessions:[]};
-lifts.forEach(lift=>{
-week.sessions.push({lift,sets:[],isolations:[{},{},{}]});
-});
+lifts.forEach(lift=>{week.sessions.push({lift,sets:[],isolations:[{},{},{}]});});
 data.weeks.push(week);
 }
 saveData();
@@ -109,7 +108,7 @@ saveData();
 populateWeekNumber();
 }
 
-// POPULATE WEEK DROPDOWN
+// Populate Week Number
 function populateWeekNumber(){
 const sel=document.getElementById('weekNumber');
 sel.innerHTML='';
@@ -117,11 +116,11 @@ for(let i=1;i<=12;i++){ sel.innerHTML+=`<option value="${i}">Week ${i}</option>`
 sel.value=currentWeek;
 }
 
-// CALCS
-function calc1RM(w,r){ const ww=parseFloat(w), rr=parseFloat(r); if(!ww||!rr) return 0; return Math.round(ww*(1+rr/30)*10)/10;}
+// Calcs
+function calc1RM(w,r){ const ww=parseFloat(w), rr=parseFloat(r); if(!ww||!rr)return 0; return Math.round(ww*(1+rr/30)*10)/10;}
 function best1RM(session){ let max=0; session.sets.forEach(s=>{ const rm=calc1RM(s.weight,s.reps); if(rm>max) max=rm; }); return max;}
 
-// RENDER
+// Render
 function render(){
 document.getElementById('cycleSelect').value=cycle;
 document.getElementById('weekSelect').value=weekType;
@@ -139,7 +138,7 @@ html+=`<div class="card"><h3>${session.lift}</h3>`;
 let defaultReps=cycle==='Hybrid'?10:5;
 if(weekType==='GVT'){
 for(let i=0;i<10;i++){
-session.sets[i] = session.sets[i] || {weight:'', reps:defaultReps};
+session.sets[i]=session.sets[i]||{weight:'',reps:defaultReps};
 html+=`<div class="set-container"><div class="input-group">
 <input type="number" class="input-weight" placeholder="Weight" value="${session.sets[i].weight}" onchange="updateSet(${s},${i},'weight',this.value)">
 <input type="number" class="input-reps" placeholder="Reps" value="${session.sets[i].reps}" onchange="updateSet(${s},${i},'reps',this.value)">
@@ -147,9 +146,9 @@ html+=`<div class="set-container"><div class="input-group">
 </div></div>`;
 }
 }else{
-// editable sets
+// editable sets for other week types
 for(let i=0;i<5;i++){
-session.sets[i] = session.sets[i] || {weight:'', reps:''};
+session.sets[i]=session.sets[i]||{weight:'',reps:''};
 html+=`<div class="set-container"><div class="input-group">
 <input type="number" class="input-weight" placeholder="Weight" value="${session.sets[i].weight}" onchange="updateSet(${s},${i},'weight',this.value)">
 <input type="number" class="input-reps" placeholder="Reps" value="${session.sets[i].reps}" onchange="updateSet(${s},${i},'reps',this.value)">
@@ -157,11 +156,12 @@ html+=`<div class="set-container"><div class="input-group">
 </div></div>`;
 }
 }
-// LAST EQUIVALENT SESSION
+
+// Last Equivalent Session
 let prev=data.history.slice().reverse().find(h=>h.lift===session.lift && h.weekType===weekType);
 if(prev){
 html+=`<div style="font-size:13px;color:#555;">Last ${weekType}: `;
-prev.sets.forEach((s,i)=>{html+=`${s.weight}x${s.reps} `;});
+prev.sets.forEach(s=>{html+=`${s.weight}x${s.reps} `;});
 html+='</div>';
 }
 
@@ -169,8 +169,7 @@ html+='</div>';
 html+=`<h4>Isolation Exercises</h4>`;
 session.isolations.forEach((iso,i)=>{
 let prevIso=prev?prev.isolations[i]:{};
-html+=`<div class="iso-container">
-<div class="input-group">
+html+=`<div class="iso-container"><div class="input-group">
 <input type="text" placeholder="Exercise" value="${iso.name||prevIso.name||''}" onchange="updateIso(${s},${i},'name',this.value)">
 <input type="number" placeholder="Sets" value="${iso.sets||prevIso.sets||''}" onchange="updateIso(${s},${i},'sets',this.value)">
 <input type="number" placeholder="Reps" value="${iso.reps||prevIso.reps||''}" onchange="updateIso(${s},${i},'reps',this.value)">
@@ -186,11 +185,11 @@ document.getElementById('sessionsContainer').innerHTML=html;
 
 function renderChart(){
 const ctx=document.getElementById('progressChart').getContext('2d');
-const labels=data.weeks.map(w=>`W${w.weekNum}`);
+const labels=data.history.map(h=>`Cycle ${h.cycle} W${h.weekNum}`);
 const datasets=lifts.map((lift,idx)=>{
 return {
 label:lift,
-data:data.weeks.map(w=>best1RM(w.sessions.find(s=>s.lift===lift))),
+data:data.history.filter(h=>h.lift===lift).map(h=>best1RM({sets:h.sets})),
 borderColor:idx===0?'#3b82f6':idx===1?'#ef4444':'#16a34a',
 backgroundColor:'transparent',
 tension:0.3
@@ -222,7 +221,6 @@ saveData(); render();
 window.resetAll=()=>{if(confirm('Delete all data and start new cycle?')){data.meta.cycle+=1; data.weeks=[]; initData(); currentWeek=1; render();}}
 
 initData(); render();
-
 if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js');}
 
 });

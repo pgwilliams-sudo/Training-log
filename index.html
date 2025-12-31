@@ -44,12 +44,12 @@ input { padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size:
 .input-weight { width: 120px; }
 .input-reps { width: 80px; }
 .input-var { width: 90px; }
-.input-iso-name { flex: 2; min-width: 150px; }
-.input-iso { flex: 1; min-width: 70px; }
+.input-iso-name { flex: 2; min-width: 120px; }
+.input-iso { flex: 1; min-width: 60px; }
 .delete-btn { background: #fee2e2; color: #dc2626; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; }
 .rm-display { padding: 10px; background: #f0f9ff; border-radius: 6px; color: #0369a1; font-weight: 600; }
-.highlight-up { background-color: #dcfce7; }  /* light green */
-.highlight-down { background-color: #fee2e2; } /* light red */
+.highlight-up { background-color: #dcfce7; }
+.highlight-down { background-color: #fee2e2; }
 .chart-container { margin-top: 20px; }
 </style>
 </head>
@@ -82,6 +82,7 @@ input { padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size:
     <canvas id="progressChart" height="200"></canvas>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function(){
 
@@ -89,7 +90,6 @@ let currentWeek=1;
 let expandedSessions=[false,false,false];
 let data=null;
 
-/* ---------- INIT DATA ---------- */
 function saveData(){ localStorage.setItem('trainingData',JSON.stringify(data)); }
 function initData(){
     const saved=localStorage.getItem('trainingData');
@@ -109,12 +109,13 @@ function initData(){
     if(!data.meta)data.meta={cycle:1};
 }
 
-/* ---------- CALCS ---------- */
+/* CALCS */
 function calc1RM(w,r){const ww=parseFloat(w), rr=parseFloat(r); if(!ww||!rr)return 0; return Math.round(ww*(1+rr/30)*10)/10;}
 function best1RM(session){let max=0; session.sets.forEach(s=>{const rm=calc1RM(s.weight,s.reps); if(rm>max)max=rm}); return max;}
 
-/* ---------- RENDER ---------- */
+/* RENDER */
 function renderWeekButtons(){let html=''; for(let i=1;i<=12;i++){html+=`<button class="week-btn ${i===currentWeek?'active':'inactive'}" onclick="goToWeek(${i})">W${i}</button>`;} weekGrid.innerHTML=html;}
+
 function renderSessions(){
     const week=data.weeks[currentWeek-1]; let html='';
     week.sessions.forEach((session,s)=>{
@@ -144,19 +145,20 @@ function renderSessions(){
         });
         html+=`<button class="btn btn-primary btn-small" onclick="addSet(${s})">+ Add Set</button>`;
 
+        // Isolation exercises
         html+=`<h4 style="margin-top:20px;">Isolation Exercises</h4>`;
         session.isolations.forEach((iso,i)=>{
             html+=`<div class="iso-container">
                 <div class="input-group">
-                    <input placeholder="Exercise" value="${iso.name||''}" onchange="updateIso(${s},${i},'name',this.value)">
-                    <input type="number" placeholder="Sets" value="${iso.sets||''}" onchange="updateIso(${s},${i},'sets',this.value)">
-                    <input type="number" placeholder="Reps" value="${iso.reps||''}" onchange="updateIso(${s},${i},'reps',this.value)">
-                    <input type="number" placeholder="Weight" value="${iso.weight||''}" onchange="updateIso(${s},${i},'weight',this.value)">
+                    <input type="text" class="input-iso-name" placeholder="Exercise" value="${iso.name||''}" onchange="updateIso(${s},${i},'name',this.value)">
+                    <input type="number" class="input-iso" placeholder="Sets" value="${iso.sets||''}" onchange="updateIso(${s},${i},'sets',this.value)">
+                    <input type="number" class="input-iso" placeholder="Reps" value="${iso.reps||''}" onchange="updateIso(${s},${i},'reps',this.value)">
+                    <input type="number" class="input-iso" placeholder="Weight" value="${iso.weight||''}" onchange="updateIso(${s},${i},'weight',this.value)">
                 </div>
             </div>`;
         });
 
-        // Historical comparison with highlights
+        // Historical comparison main sets
         const previous=data.history.filter(h=>h.lift===session.lift && h.weekType===week.weekType).slice(-3).reverse();
         if(previous.length){
             html+=`<div style="margin-top:10px;font-size:13px;color:#555;"><strong>Previous ${week.weekType}:</strong>`;
@@ -164,12 +166,7 @@ function renderSessions(){
                 html+='<div>';
                 p.sets.forEach((sidx,si)=>{
                     const prev=sidx;
-                    let cls='';
-                    if(si>0){
-                        if(parseFloat(prev.weight)>parseFloat(previous[pidx-1]?.sets[si]?.weight||0)) cls='highlight-up';
-                        else if(parseFloat(prev.weight)<parseFloat(previous[pidx-1]?.sets[si]?.weight||0)) cls='highlight-down';
-                    }
-                    html+=`<span class="${cls}">${prev.weight}×${prev.reps}${prev.variations&&prev.variations.length?`(${prev.variations.join(', ')})`:''}</span> `;
+                    html+=`<span>${prev.weight}×${prev.reps}${prev.variations&&prev.variations.length?`(${prev.variations.join(',')})`:''}</span> `;
                 });
                 html+='</div>';
             });
@@ -213,7 +210,7 @@ function render(){
     renderSessions();
 }
 
-/* ---------- ACTIONS ---------- */
+/* ACTIONS */
 window.toggleSession=i=>{expandedSessions[i]=!expandedSessions[i]; render();}
 window.addSet=s=>{data.weeks[currentWeek-1].sessions[s].sets.push({weight:'',reps:'',variations:[]}); saveData(); render();}
 window.removeSet=(s,i)=>{data.weeks[currentWeek-1].sessions[s].sets.splice(i,1); saveData(); render();}
@@ -237,9 +234,8 @@ window.completeSession=sessionIdx=>{
     saveData(); render();
 }
 
-/* ---------- START ---------- */
+/* START */
 initData(); render();
-
 if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js');}
 
 });

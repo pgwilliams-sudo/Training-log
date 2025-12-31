@@ -83,14 +83,18 @@ function avg1RM(sets,peak){
   return Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);
 }
 
-// Get last completed equivalent session
-function prevEquivalent(lift,weekType,cycle){
-  const sessions = db.lifts[lift].filter(s=>s.completed && s.weekType===weekType && s.cycle===cycle);
-  if(sessions.length===0) return null;
+// Last completed equivalent session
+function prevEquivalent(lift, weekType, cycle){
+  const sessions = db.lifts[lift].filter(s =>
+    s.completed &&
+    s.weekType === weekType &&
+    s.cycle === cycle
+  );
+  if(!sessions.length) return null;
   return sessions[sessions.length-1];
 }
 
-// Get previous week isolation
+// Previous week isolation
 function prevIsolation(lift){
   const weekSessions = db.isolations[lift].filter(s=>s.week===currentWeek-1);
   return weekSessions.length?weekSessions[0]:null;
@@ -147,16 +151,20 @@ function render(){
     const row=document.createElement('div'); row.className='row';
 
     // Previous session box
-    const prevBox=document.createElement('div'); prevBox.className='prev';
+    const prevBox = document.createElement('div'); prevBox.className='prev';
     prevBox.innerHTML='<strong>Previous</strong><br>';
     if(prevMain){
-      const avg=avg1RM(prevMain.sets,weekType==='Peak');
-      prevBox.innerHTML+=`1RM: ${avg}<br>`;
+      const avg = avg1RM(prevMain.sets, weekType==='Peak');
+      prevBox.innerHTML += `1RM: ${avg}<br>`;
       prevMain.sets.forEach(s=>prevBox.innerHTML+=`${s.w}×${s.r}<br>`);
-      prevMain.isolations.forEach(i=>{
-        if(i.name) prevBox.innerHTML+=`<span class="small">${i.name} ${i.sets}×${i.reps}@${i.weight}</span><br>`;
+    } else prevBox.innerHTML+='—<br>';
+
+    // Isolations from previous week
+    if(prevIso){
+      prevIso.isolations.forEach(i=>{
+        if(i.name) prevBox.innerHTML += `<span class="small">${i.name} ${i.sets}×${i.reps}@${i.weight}</span><br>`;
       });
-    } else prevBox.innerHTML+='—';
+    }
 
     // Current session inputs
     const curr=document.createElement('div'); curr.className='curr';
@@ -202,12 +210,21 @@ function render(){
 
 /* ---------------- WEEK BUTTONS ---------------- */
 function renderWeekButtons(){
-  const g=document.getElementById('weekGrid'); g.innerHTML='';
+  const g=document.getElementById('weekGrid'); 
+  g.innerHTML='';
   for(let i=1;i<=MAX_WEEKS;i++){
     const b=document.createElement('button');
-    b.textContent='W'+i;
+
+    // Completed sessions for any lift in this week
+    const sessionNames=[];
+    ['Squat','Bench','Deadlift'].forEach(lift=>{
+      const ses=db.lifts[lift].find(s=>s.week===i && s.completed);
+      if(ses && !sessionNames.includes(ses.weekType)) sessionNames.push(ses.weekType);
+    });
+
+    b.textContent=sessionNames.length?`W${i} – ${sessionNames.join(', ')}`:`W${i}`;
     b.className='week-btn '+(i===currentWeek?'active':'inactive');
-    b.onclick=()=>{currentWeek=i;render();};
+    b.onclick=()=>{currentWeek=i; render();};
     g.appendChild(b);
   }
 }

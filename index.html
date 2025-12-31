@@ -86,17 +86,28 @@ function prevSession(lift,weekType){
 
 /* ---------------- RENDER ---------------- */
 function render(){
-  document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
-
-  renderWeekButtons();
+  const cycleSelect = document.getElementById('cycle');
+  const typeSelect = document.getElementById('weekType');
 
   if(!data.weeks[currentWeek]){
-    data.weeks[currentWeek]={cycle:'Strength',weekType:'GVT',sessions:{}};
+    data.weeks[currentWeek] = {
+      cycle: cycleSelect.value,
+      weekType: typeSelect.value,
+      sessions: {}
+    };
   }
 
-  const wk=data.weeks[currentWeek];
-  document.getElementById('cycle').value=wk.cycle;
-  document.getElementById('weekType').value=wk.weekType;
+  const wk = data.weeks[currentWeek];
+
+  // Update week object immediately
+  wk.cycle = cycleSelect.value;
+  wk.weekType = typeSelect.value;
+
+  document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
+  cycleSelect.value = wk.cycle;
+  typeSelect.value = wk.weekType;
+
+  renderWeekButtons();
 
   const container=document.getElementById('sessions');
   container.innerHTML='';
@@ -121,7 +132,7 @@ function render(){
 
     const row=document.createElement('div'); row.className='row';
 
-    /* PREVIOUS */
+    // Previous session
     const prevBox=document.createElement('div');
     prevBox.className='prev';
     prevBox.innerHTML='<strong>Previous</strong><br>';
@@ -133,7 +144,7 @@ function render(){
       });
     } else prevBox.innerHTML+='—';
 
-    /* CURRENT */
+    // Current session
     const curr=document.createElement('div'); curr.className='curr';
 
     ses.sets.forEach((s,i)=>{

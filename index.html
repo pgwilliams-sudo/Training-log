@@ -127,26 +127,26 @@ function render(){
 
     const ses=wk.sessions[lift];
 
-    // Previous main lift equivalent session
     const prevMain = prevEquivalent(lift, wk.weekType);
-
-    // Previous week isolation
     const prevIsoWeek = prevWeekIsolation(lift);
 
     const gvt=wk.weekType==='GVT';
-    const setCount=gvt?10:5;
+    const requiredSets=gvt?10:5;
     const fixedReps=gvt?(wk.cycle==='Strength'?5:10):null;
 
-    // Fill sets
-    while(ses.sets.length<setCount) ses.sets.push({w:'',r:fixedReps||''});
-    ses.sets=ses.sets.slice(0,setCount);
+    // Add missing sets only, do not slice
+    while(ses.sets.length<requiredSets) ses.sets.push({w:'',r:fixedReps||''});
 
-    // Carry over previous equivalent main lifts
+    // Carry over previous equivalent session (main lifts)
     if(prevMain){
-      ses.sets.forEach((s,i)=>{
-        if(!s.w) s.w = prevMain.sets[i]?.w || '';
-        if(!s.r) s.r = prevMain.sets[i]?.r || (gvt?fixedReps:'');
-      });
+      for(let i=0; i<ses.sets.length; i++){
+        if(i<prevMain.sets.length){
+          if(!ses.sets[i].w) ses.sets[i].w = prevMain.sets[i].w || '';
+          if(!ses.sets[i].r) ses.sets[i].r = prevMain.sets[i].r || (gvt?fixedReps:'');
+        } else if(gvt && !ses.sets[i].r){
+          ses.sets[i].r = fixedReps;
+        }
+      }
     }
 
     // Carry over previous week isolations

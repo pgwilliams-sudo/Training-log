@@ -12,13 +12,16 @@
 body{font-family:-apple-system,BlinkMacSystemFont,Arial;background:#f5f5f5;padding:20px}
 .container{max-width:1200px;margin:auto}
 .card{background:#fff;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1)}
-h1,h3{margin-bottom:10px}
+h1,h3,h4{margin-bottom:10px}
 .input-group{display:flex;gap:8px;flex-wrap:wrap}
 input,select,textarea{padding:8px;border:1px solid #ccc;border-radius:6px}
-.set{padding:10px;border-radius:6px;margin-bottom:6px}
+textarea{width:100%;margin-top:6px}
+.set,.iso{padding:10px;border-radius:6px;margin-bottom:6px}
 .up{background:#dcfce7}
 .down{background:#fee2e2}
 .rm{font-size:12px;color:#0369a1;font-weight:600}
+.iso{background:#f8fafc}
+button{padding:8px 14px;border-radius:6px;border:none;background:#2563eb;color:white;margin-top:6px}
 </style>
 </head>
 <body>
@@ -82,7 +85,16 @@ for(let w=1;w<=12;w++){
 data.weeks.push({
 weekNum:w,
 weekType:'GVT',
-sessions:lifts.map(l=>({lift:l,sets:[],isolations:[{},{},{}],notes:''}))
+sessions:lifts.map(l=>({
+lift:l,
+sets:[],
+isolations:[
+{name:'',sets:'',reps:'',weight:''},
+{name:'',sets:'',reps:'',weight:''},
+{name:'',sets:'',reps:'',weight:''}
+],
+notes:''
+}))
 });
 }
 save(); render();
@@ -128,11 +140,14 @@ const week=data.weeks[currentWeek-1];
 let html='';
 
 week.sessions.forEach((s,si)=>{
-const prev=data.history.slice().reverse().find(h=>h.lift===s.lift && h.weekType===week.weekType);
+const prev=data.history.slice().reverse()
+  .find(h=>h.lift===s.lift && h.weekType===week.weekType);
+
 const sets=(week.weekType==='GVT')?10:5;
 
 html+=`<div class="card"><h3>${s.lift}</h3>`;
 
+// MAIN SETS
 for(let i=0;i<sets;i++){
 s.sets[i]=s.sets[i]||{weight:'',reps:''};
 let cls='';
@@ -149,8 +164,29 @@ html+=`
 </div>`;
 }
 
-html+=`<textarea maxlength="260" placeholder="Notes" onchange="note(${si},this.value)">${s.notes||''}</textarea>`;
-html+=`<button onclick="complete(${si})">Complete Session</button></div>`;
+// ISOLATIONS
+html+=`<h4>Isolation Exercises</h4>`;
+s.isolations.forEach((iso,ii)=>{
+const prevIso=prev?.isolations?.[ii]||{};
+html+=`
+<div class="iso">
+<input placeholder="Exercise" value="${iso.name||prevIso.name||''}"
+ onchange="isoUpd(${si},${ii},'name',this.value)">
+<input type="number" placeholder="Sets" value="${iso.sets||prevIso.sets||''}"
+ onchange="isoUpd(${si},${ii},'sets',this.value)">
+<input type="number" placeholder="Reps" value="${iso.reps||prevIso.reps||''}"
+ onchange="isoUpd(${si},${ii},'reps',this.value)">
+<input type="number" placeholder="Weight" value="${iso.weight||prevIso.weight||''}"
+ onchange="isoUpd(${si},${ii},'weight',this.value)">
+</div>`;
+});
+
+// NOTES
+html+=`
+<textarea maxlength="260" placeholder="Session notes (max 260 chars)"
+ onchange="note(${si},this.value)">${s.notes||''}</textarea>
+<button onclick="complete(${si})">Complete Session</button>
+</div>`;
 });
 
 document.getElementById('sessions').innerHTML=html;
@@ -161,14 +197,20 @@ function upd(s,i,f,v){
 data.weeks[currentWeek-1].sessions[s].sets[i][f]=v;
 save(); render();
 }
+function isoUpd(s,i,f,v){
+data.weeks[currentWeek-1].sessions[s].isolations[i][f]=v;
+save();
+}
 function note(s,v){data.weeks[currentWeek-1].sessions[s].notes=v; save();}
+
 function complete(s){
 const wk=data.weeks[currentWeek-1];
 data.history.push({
 lift:wk.sessions[s].lift,
 weekType:wk.weekType,
 weekNum:wk.weekNum,
-sets:JSON.parse(JSON.stringify(wk.sessions[s].sets))
+sets:JSON.parse(JSON.stringify(wk.sessions[s].sets)),
+isolations:JSON.parse(JSON.stringify(wk.sessions[s].isolations))
 });
 save(); render();
 }
@@ -177,11 +219,13 @@ function renderChart(){
 const ctx=document.getElementById('chart');
 const ds=lifts.map((l,i)=>({
 label:l,
-data:data.history.filter(h=>h.lift===l).map(h=>calc1RM(h.sets[0].weight,h.sets[0].reps)),
+data:data.history.filter(h=>h.lift===l)
+.map(h=>calc1RM(h.sets[0].weight,h.sets[0].reps)),
 borderColor:['#2563eb','#dc2626','#16a34a'][i],
 tension:.3
 }));
-new Chart(ctx,{type:'line',data:{labels:data.history.map(h=>`W${h.weekNum}`),datasets:ds}});
+new Chart(ctx,{type:'line',
+data:{labels:data.history.map(h=>`W${h.weekNum}`),datasets:ds}});
 }
 
 init();

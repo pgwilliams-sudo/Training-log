@@ -17,229 +17,215 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f5f5f5; padding: 20px; }
-.container { max-width: 1200px; margin: 0 auto; }
-.card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; padding: 20px; }
-h1 { font-size: 28px; margin-bottom: 8px; color: #333; }
-h2 { font-size: 24px; color: #333; }
-h3 { font-size: 20px; color: #333; margin-bottom: 10px; }
-h4 { font-size: 16px; color: #555; margin-bottom: 10px; font-weight: 600; }
-.subtitle { color: #666; margin-bottom: 16px; }
-.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; margin: 5px; }
-.btn-primary { background: #3b82f6; color: white; }
-.btn-danger { background: #ef4444; color: white; }
-.btn-small { padding: 8px 12px; font-size: 13px; }
-.week-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 15px; }
-.week-btn { padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; }
-.week-btn.active { background: #3b82f6; color: white; }
-.week-btn.inactive { background: #e5e7eb; color: #374151; }
-.session-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; overflow: hidden; }
-.session-header { padding: 20px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
-.session-content { padding: 20px; display: none; background: #fafafa; }
-.session-content.show { display: block; }
-.set-container, .iso-container { margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; }
-.input-group { display: flex; gap: 8px; flex-wrap: wrap; }
-input { padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
-.input-weight { width: 120px; }
-.input-reps { width: 80px; }
-.input-var { width: 90px; }
-.input-iso-name { flex: 2; min-width: 120px; }
-.input-iso { flex: 1; min-width: 60px; }
-.delete-btn { background: #fee2e2; color: #dc2626; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; }
-.rm-display { padding: 10px; background: #f0f9ff; border-radius: 6px; color: #0369a1; font-weight: 600; }
-.highlight-up { background-color: #dcfce7; }
-.highlight-down { background-color: #fee2e2; }
-.chart-container { margin-top: 20px; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system, BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; background:#f5f5f5; padding:20px;}
+.container { max-width:1200px; margin:0 auto; }
+.card { background:white; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.1); margin-bottom:20px; padding:20px;}
+h1{font-size:28px;margin-bottom:8px;color:#333;}
+h2{font-size:24px;color:#333;}
+h3{font-size:20px;color:#333;margin-bottom:10px;}
+h4{font-size:16px;color:#555;margin-bottom:10px;font-weight:600;}
+.subtitle{color:#666;margin-bottom:16px;}
+.btn{padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;margin:5px;}
+.btn-primary{background:#3b82f6;color:white;}
+.btn-danger{background:#ef4444;color:white;}
+.btn-small{padding:8px 12px;font-size:13px;}
+.input-group{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+input, select{padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;}
+.input-lift { width:80px; }
+.input-reps { width:60px; }
+.input-weight { width:80px; }
+.set-container, .iso-container { background:#fff; padding:10px; border-radius:6px; margin-bottom:8px;}
+.rm-display { padding:5px 8px; background:#f0f9ff; border-radius:6px; color:#0369a1; font-weight:600; font-size:13px;}
+.chart-container { margin-top:20px;}
 </style>
 </head>
 <body>
-
 <div class="container">
 
 <div class="card">
-    <h1>12-Week Training Logger</h1>
-    <p class="subtitle">Track your progression with automatic 1RM calculations</p>
-    <button class="btn btn-danger btn-small" onclick="resetAll()">Reset All Data / Start New Cycle</button>
+<h1>12-Week Training Logger</h1>
+<p class="subtitle">Track your progression with last session comparison</p>
+<button class="btn btn-danger btn-small" onclick="resetAll()">Reset All / New Cycle</button>
 </div>
 
 <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
-        <button class="btn btn-primary" id="btnPrev" onclick="changeWeek(-1)">← Previous</button>
-        <div style="text-align:center;">
-            <h2 id="weekTitle">Week 1</h2>
-            <p class="subtitle" id="weekType"></p>
-        </div>
-        <button class="btn btn-primary" id="btnNext" onclick="changeWeek(1)">Next →</button>
-    </div>
-    <div class="week-grid" id="weekGrid"></div>
+<div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+<label>Training Cycle: 
+<select id="cycleSelect" onchange="changeCycle(this.value)">
+<option value="Hybrid">Hybrid</option>
+<option value="Strength">Strength</option>
+</select></label>
+
+<label>Week Type: 
+<select id="weekSelect" onchange="changeWeekType(this.value)">
+<option value="GVT">GVT</option>
+<option value="Core Session">Core Session</option>
+<option value="Breakdown Banded">Breakdown Banded</option>
+<option value="Breakdown Pause">Breakdown Pause</option>
+<option value="Breakdown Other">Breakdown Other</option>
+<option value="Mini-Peak">Mini-Peak</option>
+<option value="Peak">Peak</option>
+</select></label>
+
+<label>Week Number:
+<select id="weekNumber" onchange="goToWeek(this.value)">
+</select></label>
+</div>
 </div>
 
 <div id="sessionsContainer"></div>
 
 <div class="card chart-container">
-    <h3>Weekly 1RM Progression</h3>
-    <canvas id="progressChart" height="200"></canvas>
+<h3>Weekly 1RM Progression</h3>
+<canvas id="progressChart" height="200"></canvas>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function(){
+document.addEventListener('DOMContentLoaded',function(){
 
 let currentWeek=1;
-let expandedSessions=[false,false,false];
+let cycle='Hybrid';
+let weekType='GVT';
 let data=null;
+const lifts=['Squat','Bench','Deadlift'];
 
+// INIT DATA
 function saveData(){ localStorage.setItem('trainingData',JSON.stringify(data)); }
 function initData(){
-    const saved=localStorage.getItem('trainingData');
-    if(saved){data=JSON.parse(saved);} 
-    else {data={weeks:[],history:[],meta:{cycle:1}};}
-    const lifts=['Squat','Bench','Deadlift'];
-    if(!data.weeks||data.weeks.length===0){
-        for(let w=0;w<12;w++){
-            let wType=(w===0||w===6)?'GVT (10x10)':(w===1||w===3||w===7||w===9)?'Breakdown':(w===2||w===4||w===8||w===10)?'5x5':(w===5)?'Mini-Peak (2RM)':'Peak (1RM)';
-            const week={weekNum:w+1,weekType:wType,sessions:[]};
-            lifts.forEach(lift=>{week.sessions.push({lift,sets:[],isolations:[{},{},{}]});});
-            data.weeks.push(week);
-        }
-        saveData();
-    }
-    if(!data.history)data.history=[];
-    if(!data.meta)data.meta={cycle:1};
+const saved=localStorage.getItem('trainingData');
+if(saved){ data=JSON.parse(saved);} 
+else { data={weeks:[],history:[],meta:{cycle:1}};}
+if(!data.weeks.length){
+for(let w=1;w<=12;w++){
+let week={weekNum:w,weekType:'GVT',sessions:[]};
+lifts.forEach(lift=>{
+week.sessions.push({lift,sets:[],isolations:[{},{},{}]});
+});
+data.weeks.push(week);
+}
+saveData();
+}
+populateWeekNumber();
 }
 
-/* CALCS */
-function calc1RM(w,r){const ww=parseFloat(w), rr=parseFloat(r); if(!ww||!rr)return 0; return Math.round(ww*(1+rr/30)*10)/10;}
-function best1RM(session){let max=0; session.sets.forEach(s=>{const rm=calc1RM(s.weight,s.reps); if(rm>max)max=rm}); return max;}
+// POPULATE WEEK DROPDOWN
+function populateWeekNumber(){
+const sel=document.getElementById('weekNumber');
+sel.innerHTML='';
+for(let i=1;i<=12;i++){ sel.innerHTML+=`<option value="${i}">Week ${i}</option>`;}
+sel.value=currentWeek;
+}
 
-/* RENDER */
-function renderWeekButtons(){let html=''; for(let i=1;i<=12;i++){html+=`<button class="week-btn ${i===currentWeek?'active':'inactive'}" onclick="goToWeek(${i})">W${i}</button>`;} weekGrid.innerHTML=html;}
+// CALCS
+function calc1RM(w,r){ const ww=parseFloat(w), rr=parseFloat(r); if(!ww||!rr) return 0; return Math.round(ww*(1+rr/30)*10)/10;}
+function best1RM(session){ let max=0; session.sets.forEach(s=>{ const rm=calc1RM(s.weight,s.reps); if(rm>max) max=rm; }); return max;}
+
+// RENDER
+function render(){
+document.getElementById('cycleSelect').value=cycle;
+document.getElementById('weekSelect').value=weekType;
+document.getElementById('weekNumber').value=currentWeek;
+renderSessions();
+renderChart();
+}
 
 function renderSessions(){
-    const week=data.weeks[currentWeek-1]; let html='';
-    week.sessions.forEach((session,s)=>{
-        const best=best1RM(session);
-        html+=`<div class="session-card">
-            <div class="session-header" onclick="toggleSession(${s})">
-                <h3>${session.lift}</h3>
-                <div style="font-size:14px;color:#666;">Est. 1RM: <strong>${best||'—'}</strong></div>
-            </div>
-            <div class="session-content ${expandedSessions[s]?'show':''}">
-                <h4>Main Sets</h4>`;
-        session.sets.forEach((set,i)=>{
-            const rm=calc1RM(set.weight,set.reps);
-            html+=`<div class="set-container">
-                <div class="input-group">
-                    <input type="number" placeholder="Weight" value="${set.weight||''}" onchange="updateSet(${s},${i},'weight',this.value)">
-                    <input type="number" placeholder="Reps" value="${set.reps||''}" onchange="updateSet(${s},${i},'reps',this.value)">
-                    ${rm?`<div class="rm-display">1RM ${rm}</div>`:''}
-                    <button class="delete-btn" onclick="removeSet(${s},${i})">Delete</button>
-                </div>`;
-            if(week.weekType==='Breakdown'){
-                html+='<div class="input-group">';
-                for(let v=0;v<5;v++){const val=set.variations?set.variations[v]||'':''; html+=`<input type="text" class="input-var" placeholder="Variation ${v+1}" value="${val}" onchange="updateVar(${s},${i},${v},this.value)">`;}
-                html+='</div>';
-            }
-            html+='</div>';
-        });
-        html+=`<button class="btn btn-primary btn-small" onclick="addSet(${s})">+ Add Set</button>`;
+const week=data.weeks[currentWeek-1];
+weekType=week.weekType;
+let html='';
+week.sessions.forEach((session,s)=>{
+html+=`<div class="card"><h3>${session.lift}</h3>`;
+let defaultReps=cycle==='Hybrid'?10:5;
+if(weekType==='GVT'){
+for(let i=0;i<10;i++){
+session.sets[i] = session.sets[i] || {weight:'', reps:defaultReps};
+html+=`<div class="set-container"><div class="input-group">
+<input type="number" class="input-weight" placeholder="Weight" value="${session.sets[i].weight}" onchange="updateSet(${s},${i},'weight',this.value)">
+<input type="number" class="input-reps" placeholder="Reps" value="${session.sets[i].reps}" onchange="updateSet(${s},${i},'reps',this.value)">
+<div class="rm-display">1RM ${calc1RM(session.sets[i].weight,session.sets[i].reps)}</div>
+</div></div>`;
+}
+}else{
+// editable sets
+for(let i=0;i<5;i++){
+session.sets[i] = session.sets[i] || {weight:'', reps:''};
+html+=`<div class="set-container"><div class="input-group">
+<input type="number" class="input-weight" placeholder="Weight" value="${session.sets[i].weight}" onchange="updateSet(${s},${i},'weight',this.value)">
+<input type="number" class="input-reps" placeholder="Reps" value="${session.sets[i].reps}" onchange="updateSet(${s},${i},'reps',this.value)">
+<div class="rm-display">1RM ${calc1RM(session.sets[i].weight,session.sets[i].reps)}</div>
+</div></div>`;
+}
+}
+// LAST EQUIVALENT SESSION
+let prev=data.history.slice().reverse().find(h=>h.lift===session.lift && h.weekType===weekType);
+if(prev){
+html+=`<div style="font-size:13px;color:#555;">Last ${weekType}: `;
+prev.sets.forEach((s,i)=>{html+=`${s.weight}x${s.reps} `;});
+html+='</div>';
+}
 
-        // Isolation exercises
-        html+=`<h4 style="margin-top:20px;">Isolation Exercises</h4>`;
-        session.isolations.forEach((iso,i)=>{
-            html+=`<div class="iso-container">
-                <div class="input-group">
-                    <input type="text" class="input-iso-name" placeholder="Exercise" value="${iso.name||''}" onchange="updateIso(${s},${i},'name',this.value)">
-                    <input type="number" class="input-iso" placeholder="Sets" value="${iso.sets||''}" onchange="updateIso(${s},${i},'sets',this.value)">
-                    <input type="number" class="input-iso" placeholder="Reps" value="${iso.reps||''}" onchange="updateIso(${s},${i},'reps',this.value)">
-                    <input type="number" class="input-iso" placeholder="Weight" value="${iso.weight||''}" onchange="updateIso(${s},${i},'weight',this.value)">
-                </div>
-            </div>`;
-        });
+// Isolation exercises
+html+=`<h4>Isolation Exercises</h4>`;
+session.isolations.forEach((iso,i)=>{
+let prevIso=prev?prev.isolations[i]:{};
+html+=`<div class="iso-container">
+<div class="input-group">
+<input type="text" placeholder="Exercise" value="${iso.name||prevIso.name||''}" onchange="updateIso(${s},${i},'name',this.value)">
+<input type="number" placeholder="Sets" value="${iso.sets||prevIso.sets||''}" onchange="updateIso(${s},${i},'sets',this.value)">
+<input type="number" placeholder="Reps" value="${iso.reps||prevIso.reps||''}" onchange="updateIso(${s},${i},'reps',this.value)">
+<input type="number" placeholder="Weight" value="${iso.weight||prevIso.weight||''}" onchange="updateIso(${s},${i},'weight',this.value)">
+</div></div>`;
+});
 
-        // Historical comparison main sets
-        const previous=data.history.filter(h=>h.lift===session.lift && h.weekType===week.weekType).slice(-3).reverse();
-        if(previous.length){
-            html+=`<div style="margin-top:10px;font-size:13px;color:#555;"><strong>Previous ${week.weekType}:</strong>`;
-            previous.forEach((p,pidx)=>{
-                html+='<div>';
-                p.sets.forEach((sidx,si)=>{
-                    const prev=sidx;
-                    html+=`<span>${prev.weight}×${prev.reps}${prev.variations&&prev.variations.length?`(${prev.variations.join(',')})`:''}</span> `;
-                });
-                html+='</div>';
-            });
-            html+='</div>';
-        }
-
-        html+=`<button class="btn btn-primary btn-small" onclick="completeSession(${s})" style="margin-top:10px;">Mark Session Complete</button>`;
-        html+='</div></div>';
-    });
-    sessionsContainer.innerHTML=html;
-    renderChart();
+html+=`<button class="btn btn-primary btn-small" onclick="completeSession(${s})">Mark Session Complete</button>`;
+html+='</div>';
+});
+document.getElementById('sessionsContainer').innerHTML=html;
 }
 
 function renderChart(){
-    const ctx=document.getElementById('progressChart').getContext('2d');
-    const labels=data.weeks.map(w=>`W${w.weekNum}`);
-    const lifts=['Squat','Bench','Deadlift'];
-    const datasets=lifts.map((lift,idx)=>{
-        return {
-            label: lift,
-            data:data.weeks.map(w=>{
-                const sess=w.sessions.find(s=>s.lift===lift);
-                return best1RM(sess);
-            }),
-            borderColor: idx===0?'#3b82f6':idx===1?'#ef4444':'#16a34a',
-            backgroundColor: 'transparent',
-            tension:0.3
-        };
-    });
-    if(window.myChart) window.myChart.destroy();
-    window.myChart=new Chart(ctx,{type:'line',data:{labels,datasets},options:{responsive:true,plugins:{legend:{position:'top'}}}});
+const ctx=document.getElementById('progressChart').getContext('2d');
+const labels=data.weeks.map(w=>`W${w.weekNum}`);
+const datasets=lifts.map((lift,idx)=>{
+return {
+label:lift,
+data:data.weeks.map(w=>best1RM(w.sessions.find(s=>s.lift===lift))),
+borderColor:idx===0?'#3b82f6':idx===1?'#ef4444':'#16a34a',
+backgroundColor:'transparent',
+tension:0.3
+};
+});
+if(window.myChart) window.myChart.destroy();
+window.myChart=new Chart(ctx,{type:'line',data:{labels,datasets}});
 }
 
-function render(){
-    const week=data.weeks[currentWeek-1];
-    weekTitle.textContent='Week '+currentWeek;
-    weekType.textContent=week.weekType;
-    btnPrev.disabled=currentWeek===1;
-    btnNext.disabled=currentWeek===12;
-    renderWeekButtons();
-    renderSessions();
-}
-
-/* ACTIONS */
-window.toggleSession=i=>{expandedSessions[i]=!expandedSessions[i]; render();}
-window.addSet=s=>{data.weeks[currentWeek-1].sessions[s].sets.push({weight:'',reps:'',variations:[]}); saveData(); render();}
-window.removeSet=(s,i)=>{data.weeks[currentWeek-1].sessions[s].sets.splice(i,1); saveData(); render();}
+// ACTIONS
+window.changeCycle=c=>{cycle=c; render();}
+window.changeWeekType=w=>{weekType=w; data.weeks[currentWeek-1].weekType=w; render();}
+window.goToWeek=w=>{currentWeek=parseInt(w); render();}
 window.updateSet=(s,i,f,v)=>{data.weeks[currentWeek-1].sessions[s].sets[i][f]=v; saveData(); render();}
-window.updateVar=(s,i,vIdx,v)=>{let set=data.weeks[currentWeek-1].sessions[s].sets[i]; if(!set.variations)set.variations=[]; set.variations[vIdx]=v; saveData();}
 window.updateIso=(s,i,f,v)=>{data.weeks[currentWeek-1].sessions[s].isolations[i][f]=v; saveData();}
-window.changeWeek=d=>{currentWeek+=d; expandedSessions=[false,false,false]; render();}
-window.goToWeek=w=>{currentWeek=w; expandedSessions=[false,false,false]; render();}
-window.resetAll=()=>{if(confirm('Delete all data? Start new cycle?')){data.meta.cycle+=1; data.weeks=[]; initData(); currentWeek=1; expandedSessions=[false,false,false]; render();}}
-window.completeSession=sessionIdx=>{
-    const week=data.weeks[currentWeek-1];
-    const session=week.sessions[sessionIdx];
-    data.history.push({
-        lift: session.lift,
-        weekType: week.weekType,
-        weekNum: week.weekNum,
-        cycle: data.meta.cycle,
-        date: new Date().toISOString().split('T')[0],
-        sets: session.sets.map(s=>({weight:s.weight,reps:s.reps,variations:s.variations||[]}))
-    });
-    saveData(); render();
+window.completeSession=s=>{
+const week=data.weeks[currentWeek-1];
+const session=week.sessions[s];
+data.history.push({
+lift:session.lift,
+weekType:weekType,
+weekNum:week.weekNum,
+cycle:cycle,
+sets:session.sets.map(s=>({weight:s.weight,reps:s.reps})),
+isolations:session.isolations.map(i=>({name:i.name,sets:i.sets,reps:i.reps,weight:i.weight}))
+});
+saveData(); render();
 }
+window.resetAll=()=>{if(confirm('Delete all data and start new cycle?')){data.meta.cycle+=1; data.weeks=[]; initData(); currentWeek=1; render();}}
 
-/* START */
 initData(); render();
+
 if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js');}
 
 });
 </script>
-
 </body>
 </html>

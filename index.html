@@ -80,9 +80,6 @@ function avg1RM(sets,peak){
   if(peak) return Math.max(...sets.map(s=>calc1RM(s.w,s.r)));
   return Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);
 }
-function prevSession(lift,weekType){
-  return [...data.history].reverse().find(h=>h.lift===lift&&h.weekType===weekType)||null;
-}
 
 /* ---------------- RENDER ---------------- */
 function render(){
@@ -93,13 +90,11 @@ function render(){
     data.weeks[currentWeek] = {
       cycle: cycleSelect.value,
       weekType: typeSelect.value,
-      sessions: {}
+      sessions:{}
     };
   }
 
   const wk = data.weeks[currentWeek];
-
-  // Update week object immediately
   wk.cycle = cycleSelect.value;
   wk.weekType = typeSelect.value;
 
@@ -114,10 +109,11 @@ function render(){
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
     if(!wk.sessions[lift])
-      wk.sessions[lift]={sets:[],isolations:[{},{},{}],notes:''};
+      wk.sessions[lift]={sets:[],isolations:[{},{},{}],notes:'',completed:false};
 
     const ses=wk.sessions[lift];
-    const prev=prevSession(lift,wk.weekType);
+
+    const prevWeekData = data.weeks[currentWeek-1]?.sessions[lift] || null;
 
     const gvt=wk.weekType==='GVT';
     const setCount=gvt?10:5;
@@ -136,53 +132,53 @@ function render(){
     const prevBox=document.createElement('div');
     prevBox.className='prev';
     prevBox.innerHTML='<strong>Previous</strong><br>';
-    if(prev){
-      prevBox.innerHTML+=`1RM: ${prev.avg1RM}<br>`;
-      prev.sets.forEach(s=>prevBox.innerHTML+=`${s.w}×${s.r}<br>`);
-      prev.isolations.forEach(i=>{
+    if(prevWeekData){
+      const avg=avg1RM(prevWeekData.sets, wk.weekType==='Peak');
+      prevBox.innerHTML+=`1RM: ${avg}<br>`;
+      prevWeekData.sets.forEach(s=>prevBox.innerHTML+=`${s.w}×${s.r}<br>`);
+      prevWeekData.isolations.forEach(i=>{
         if(i.name) prevBox.innerHTML+=`<span class="small">${i.name} ${i.sets}×${i.reps}@${i.weight}</span><br>`;
       });
     } else prevBox.innerHTML+='—';
 
     // Current session
     const curr=document.createElement('div'); curr.className='curr';
-
     ses.sets.forEach((s,i)=>{
       curr.innerHTML+=`
         <div class="set">
           <span>${i+1}</span>
-          <input type="number" placeholder="kg" value="${s.w}"
+          <input type="number" placeholder="kg" value="${s.w}" ${ses.completed?'disabled':''}
             oninput="setMain('${lift}',${i},'w',this.value)">
-          <input type="number" placeholder="reps" value="${s.r}" ${fixedReps?'disabled':''}
+          <input type="number" placeholder="reps" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''}
             oninput="setMain('${lift}',${i},'r',this.value)">
         </div>`;
     });
 
     curr.innerHTML+='<strong>Isolation</strong>';
     ses.isolations.forEach((iso,i)=>{
-      const p=prev?.isolations?.[i];
-      if(!iso.name&&p) iso.name=p.name;
-      if(!iso.sets&&p) iso.sets=p.sets;
-      if(!iso.reps&&p) iso.reps=p.reps;
-      if(!iso.weight&&p) iso.weight=p.weight;
+      const prevIso=prevWeekData?.isolations[i] || {};
+      if(!iso.name) iso.name=prevIso.name || '';
+      if(!iso.sets) iso.sets=prevIso.sets || '';
+      if(!iso.reps) iso.reps=prevIso.reps || '';
+      if(!iso.weight) iso.weight=prevIso.weight || '';
 
       curr.innerHTML+=`
         <div class="iso">
-          <input placeholder="Exercise" value="${iso.name||''}"
+          <input placeholder="Exercise" value="${iso.name||''}" ${ses.completed?'disabled':''}
             oninput="setIso('${lift}',${i},'name',this.value)">
-          <input type="number" placeholder="Sets" value="${iso.sets||''}"
+          <input type="number" placeholder="Sets" value="${iso.sets||''}" ${ses.completed?'disabled':''}
             oninput="setIso('${lift}',${i},'sets',this.value)">
-          <input type="number" placeholder="Reps" value="${iso.reps||''}"
+          <input type="number" placeholder="Reps" value="${iso.reps||''}" ${ses.completed?'disabled':''}
             oninput="setIso('${lift}',${i},'reps',this.value)">
-          <input type="number" placeholder="Weight" value="${iso.weight||''}"
+          <input type="number" placeholder="Weight" value="${iso.weight||''}" ${ses.completed?'disabled':''}
             oninput="setIso('${lift}',${i},'weight',this.value)">
         </div>`;
     });
 
     curr.innerHTML+=`
-      <textarea maxlength="260" placeholder="Notes"
+      <textarea maxlength="260" placeholder="Notes" ${ses.completed?'readonly':''}
         oninput="setNotes('${lift}',this.value)">${ses.notes}</textarea>
-      <button onclick="complete('${lift}')">Complete Session</button>`;
+      <button onclick="complete('${lift}')" ${ses.completed?'disabled>Completed':'>'}Complete Session</button>`;
 
     row.append(prevBox,curr);
     card.appendChild(row);
@@ -217,6 +213,7 @@ function complete(lift){
   const ses=wk.sessions[lift];
 
   ses.isolations.forEach(i=>{for(const k in i) if(i[k]===undefined) i[k]='';});
+  ses.completed = true;
 
   const avg=avg1RM(ses.sets,wk.weekType==='Peak');
   data.history.push({

@@ -132,14 +132,12 @@ function render(){
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
     const prevIso=prevIsolation(lift);
 
-    // Ensure correct number of sets
     ses.sets = Array.from({length:setCount},(_,i)=>{
       const prevW = ses.sets[i]?.w || '';
       const prevR = ses.sets[i]?.r || (fixedReps||'');
       return {w:prevW,r:prevR};
     });
 
-    // Isolations carryover
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
       if(prevIso){
@@ -203,7 +201,9 @@ function render(){
       <textarea maxlength="260" ${ses.completed?'readonly':''} oninput="setNotes('${lift}',this.value)">${ses.notes}</textarea>
       <button ${ses.completed?'disabled':''} onclick="complete('${lift}')">
         ${ses.completed?'Completed':'Complete Session'}
-      </button>`;
+      </button>
+      ${ses.completed ? `<button onclick="unlock('${lift}')">Unlock Session</button>` : ''}
+    `;
 
     row.append(prev,curr);
     card.append(row);
@@ -226,10 +226,18 @@ function complete(lift){
   const avg=avg1RM(s.sets,s.weekType==='Peak');
   db.history.push({lift,avg});
   if(!db.pbs[lift] || avg>db.pbs[lift]) db.pbs[lift]=avg;
-  // save isolation snapshot
   db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
   db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
   save(); render();
+}
+
+/* ---------------- UNLOCK ---------------- */
+function unlock(lift){
+  const s = db.lifts[lift].find(x => x.week === currentWeek);
+  if(s){
+    s.completed = false;
+    render();
+  }
 }
 
 /* ---------------- NAVIGATION ---------------- */

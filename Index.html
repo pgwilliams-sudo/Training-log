@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>12-Week Weight Training Logger</title>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    background: #f5f5f5;
+    padding: 20px;
+}
+.container { max-width: 1200px; margin: 0 auto; }
+.card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    padding: 20px;
+}
+h1 { font-size: 28px; margin-bottom: 8px; color: #333; }
+h2 { font-size: 24px; color: #333; }
+h3 { font-size: 20px; color: #333; margin-bottom: 10px; }
+h4 { font-size: 16px; color: #555; margin-bottom: 10px; font-weight: 600; }
+.subtitle { color: #666; margin-bottom: 16px; }
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    margin: 5px;
+}
+.btn-primary { background: #3b82f6; color: white; }
+.btn-danger { background: #ef4444; color: white; }
+.btn-small { padding: 8px 12px; font-size: 13px; }
+
+.week-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-top: 15px;
+}
+.week-btn {
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+.week-btn.active { background: #3b82f6; color: white; }
+.week-btn.inactive { background: #e5e7eb; color: #374151; }
+
+.session-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+.session-header {
+    padding: 20px;
+    cursor: pointer;
+    border-bottom: 1px solid #e5e7eb;
+}
+.session-content { padding: 20px; display: none; background: #fafafa; }
+.session-content.show { display: block; }
+
+.set-container, .iso-container {
+    margin-bottom: 10px;
+    padding: 10px;
+    background: white;
+    border-radius: 6px;
+}
+.input-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+input {
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+.input-weight { width: 120px; }
+.input-reps { width: 80px; }
+.input-var { width: 90px; }
+.input-iso-name { flex: 2; min-width: 150px; }
+.input-iso { flex: 1; min-width: 70px; }
+
+.delete-btn {
+    background: #fee2e2;
+    color: #dc2626;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.rm-display {
+    padding: 10px;
+    background: #f0f9ff;
+    border-radius: 6px;
+    color: #0369a1;
+    font-weight: 600;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<div class="card">
+    <h1>12-Week Training Logger</h1>
+    <p class="subtitle">Track your progression with automatic 1RM calculations</p>
+    <button class="btn btn-danger btn-small" onclick="resetAll()">Reset All Data</button>
+</div>
+
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btnPrev" onclick="changeWeek(-1)">← Previous</button>
+        <div style="text-align:center;">
+            <h2 id="weekTitle">Week 1</h2>
+            <p class="subtitle" id="weekType"></p>
+        </div>
+        <button class="btn btn-primary" id="btnNext" onclick="changeWeek(1)">Next →</button>
+    </div>
+    <div class="week-grid" id="weekGrid"></div>
+</div>
+
+<div id="sessionsContainer"></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+let currentWeek = 1;
+let expandedSessions = [false, false, false];
+let data = null;
+
+function saveData() {
+    localStorage.setItem('trainingData', JSON.stringify(data));
+}
+
+function initData() {
+    const saved = localStorage.getItem('trainingData');
+    if (saved) {
+        data = JSON.parse(saved);
+        return;
+    }
+
+    data = { weeks: [] };
+    const lifts = ['Squat', 'Bench', 'Deadlift'];
+
+    for (let w = 0; w < 12; w++) {
+        let wType =
+            (w === 0 || w === 6) ? 'GVT (10x10)' :
+            (w === 1 || w === 3 || w === 7 || w === 9) ? 'Breakdown' :
+            (w === 2 || w === 4 || w === 8 || w === 10) ? '5x5' :
+            (w === 5) ? 'Mini-Peak (2RM)' : 'Peak (1RM)';
+
+        const week = { weekNum: w + 1, weekType: wType, sessions: [] };
+
+        lifts.forEach(lift => {
+            week.sessions.push({
+                lift,
+                sets: [],
+                isolations: [{},{},{}]
+            });
+        });
+
+        data.weeks.push(week);
+    }
+    saveData();
+}
+
+function calc1RM(w, r) {
+    w = parseFloat(w); r = parseFloat(r);
+    if (!w || !r) return 0;
+    return Math.round(w * (1 + r / 30) * 10) / 10;
+}
+
+function render() {
+    const week = data.weeks[currentWeek - 1];
+    document.getElementById('weekTitle').textContent = 'Week ' + currentWeek;
+    document.getElementById('weekType').textContent = week.weekType;
+    document.getElementById('btnPrev').disabled = currentWeek === 1;
+    document.getElementById('btnNext').disabled = currentWeek === 12;
+
+    let grid = '';
+    for (let i = 1; i <= 12; i++) {
+        grid += `<button class="week-btn ${i===currentWeek?'active':'inactive'}"
+                 onclick="goToWeek(${i})">W${i}</button>`;
+    }
+    weekGrid.innerHTML = grid;
+}
+
+window.changeWeek = d => { currentWeek += d; expandedSessions=[false,false,false]; render(); };
+window.goToWeek = w => { currentWeek = w; expandedSessions=[false,false,false]; render(); };
+window.resetAll = () => {
+    if (confirm('Delete all data?')) {
+        localStorage.removeItem('trainingData');
+        initData(); currentWeek=1; render();
+    }
+};
+
+initData();
+render();
+
+});
+</script>
+</body>
+</html>

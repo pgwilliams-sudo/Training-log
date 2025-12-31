@@ -11,19 +11,21 @@
 body{font-family:-apple-system,BlinkMacSystemFont,Arial;background:#f5f5f5;padding:20px}
 .container{max-width:1200px;margin:auto}
 .card{background:#fff;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+.row{display:flex;gap:12px}
+.col{flex:1}
 h1,h3,h4{margin-bottom:10px}
-.input-group{display:flex;gap:8px;flex-wrap:wrap}
-input,select,textarea{padding:8px;border:1px solid #ccc;border-radius:6px}
-textarea{width:100%;margin-top:6px}
-.set{padding:10px;border-radius:6px;margin-bottom:6px}
+input,select,textarea{padding:8px;border:1px solid #ccc;border-radius:6px;width:100%}
+textarea{margin-top:6px}
+.set{padding:8px;border-radius:6px;margin-bottom:6px}
+.ref{background:#f1f5f9;padding:10px;border-radius:6px;font-size:13px}
 .up{background:#dcfce7}
 .down{background:#fee2e2}
-.ref{background:#f1f5f9;font-size:13px;padding:8px;border-radius:6px;margin-bottom:8px}
+.pb{background:#fde68a}
 .iso{background:#f8fafc;padding:8px;border-radius:6px;margin-bottom:6px}
+.locked input{background:#e5e7eb}
+.rmBox{background:#eff6ff;padding:10px;border-radius:6px;margin:10px 0;font-weight:600}
 button{padding:8px 14px;border-radius:6px;border:none;background:#2563eb;color:white;margin-top:6px}
 button.secondary{background:#6b7280}
-.rmBox{background:#eff6ff;padding:10px;border-radius:6px;margin:10px 0;font-weight:600}
-.locked input{background:#e5e7eb}
 </style>
 </head>
 
@@ -63,21 +65,19 @@ button.secondary{background:#6b7280}
 </div>
 
 <script>
-let data;
-let currentWeek=1;
-let cycle='Hybrid';
+let data,currentWeek=1,cycle='Hybrid';
 const lifts=['Squat','Bench','Deadlift'];
 
-function calc1RM(w,r){
-w=parseFloat(w);r=parseFloat(r);
-return (!w||!r)?0:w*(1+r/30);
-}
+const calcTheo1RM=(w,r)=>w&&r? w*(1+r/30):0;
 
-function avg1RM(sets){
-const vals=sets.map(s=>calc1RM(s.weight,s.reps)).filter(v=>v>0);
-if(!vals.length)return 0;
-return Math.round(vals.reduce((a,b)=>a+b)/vals.length);
+const session1RM=(wkType,sets)=>{
+if(wkType==='Peak'){
+const top=sets.map(s=>parseFloat(s.weight)).filter(v=>v>0);
+return top.length? Math.max(...top):0;
 }
+const vals=sets.map(s=>calcTheo1RM(s.weight,s.reps)).filter(v=>v>0);
+return vals.length? Math.round(vals.reduce((a,b)=>a+b)/vals.length):0;
+};
 
 function init(){
 const saved=localStorage.getItem('trainingData');
@@ -85,7 +85,6 @@ if(saved)data=JSON.parse(saved);
 else resetAll(true);
 
 const w=document.getElementById('weekNum');
-w.innerHTML='';
 for(let i=1;i<=12;i++)w.innerHTML+=`<option>${i}</option>`;
 render();
 }
@@ -111,14 +110,13 @@ notes:''
 }))
 });
 }
-save(); render();
+save();render();
 }
 
-function save(){localStorage.setItem('trainingData',JSON.stringify(data));}
-
-function changeCycle(c){cycle=c;applyGVT();render();}
-function changeWeekType(w){data.weeks[currentWeek-1].weekType=w;applyGVT();save();render();}
-function goWeek(w){currentWeek=parseInt(w);render();}
+const save=()=>localStorage.setItem('trainingData',JSON.stringify(data));
+const changeCycle=c=>{cycle=c;applyGVT();render();};
+const changeWeekType=w=>{data.weeks[currentWeek-1].weekType=w;applyGVT();save();render();};
+const goWeek=w=>{currentWeek=parseInt(w);render();};
 
 function applyGVT(){
 const wk=data.weeks[currentWeek-1];
@@ -130,72 +128,99 @@ for(let i=0;i<10;i++)s.sets.push({weight:'',reps});
 });
 }
 
+function lastEquivalent(lift,wkType){
+return data.history.slice().reverse().find(h=>{
+if(h.lift!==lift)return false;
+if(wkType==='GVT')return h.weekType==='GVT';
+return h.weekType===wkType;
+});
+}
+
+function lastIsolation(lift){
+return data.history.slice().reverse().find(h=>h.lift===lift);
+}
+
+function isPB(lift,val){
+const past=data.history.filter(h=>h.lift===lift)
+.map(h=>session1RM(h.weekType,h.sets));
+return val>Math.max(0,...past);
+}
+
 function render(){
 const wk=data.weeks[currentWeek-1];
-document.getElementById('cycle').value=cycle;
-document.getElementById('weekType').value=wk.weekType;
-document.getElementById('weekNum').value=currentWeek;
+cycleEl.value=cycle;
+weekTypeEl.value=wk.weekType;
+weekNum.value=currentWeek;
 
 let html='';
 wk.sessions.forEach((s,si)=>{
-const prev=data.history.slice().reverse()
-.find(h=>h.lift===s.lift && h.weekType===wk.weekType);
+const prev=lastEquivalent(s.lift,wk.weekType);
+const prevIso=lastIsolation(s.lift);
+const sets=wk.weekType==='GVT'?10:5;
+const currRM=session1RM(wk.weekType,s.sets);
 
-const sets=(wk.weekType==='GVT')?10:5;
-html+=`<div class="card"><h3>${s.lift}</h3>`;
+html+=`<div class="card"><h3>${s.lift}</h3><div class="row">`;
 
-// Previous reference
+// LEFT REF
+html+=`<div class="col">`;
 if(prev){
-html+=`<div class="ref"><strong>Previous Equivalent Session</strong><br>`;
-prev.sets.forEach((ps,i)=>html+=`Set ${i+1}: ${ps.weight} × ${ps.reps}<br>`);
+html+=`<div class="ref"><strong>Previous Equivalent</strong><br>`;
+prev.sets.forEach((ps,i)=>html+=`Set ${i+1}: ${ps.weight}×${ps.reps}<br>`);
 html+=`</div>`;
 }
+if(prevIso){
+html+=`<div class="ref" style="margin-top:8px"><strong>Previous Isolation</strong><br>`;
+prevIso.isolations.forEach(i=>html+=`${i.name||''} ${i.sets}×${i.reps} @${i.weight}<br>`);
+html+=`</div>`;
+}
+html+=`</div>`;
 
-const avgRM=avg1RM(s.sets);
-if(avgRM>0)html+=`<div class="rmBox">Session Estimated 1RM: ${avgRM}</div>`;
+// RIGHT ENTRY
+html+=`<div class="col">`;
+if(currRM>0){
+const cls=isPB(s.lift,currRM)?'pb':'';
+html+=`<div class="rmBox ${cls}">Session 1RM: ${currRM}</div>`;
+}
 
 for(let i=0;i<sets;i++){
 s.sets[i]=s.sets[i]||{weight:'',reps:''};
-html+=`
-<div class="set">
+let cls='';
+if(prev?.sets[i]){
+if(+s.sets[i].weight>+prev.sets[i].weight||+s.sets[i].reps>+prev.sets[i].reps)cls='up';
+if(+s.sets[i].weight<+prev.sets[i].weight||+s.sets[i].reps<+prev.sets[i].reps)cls='down';
+}
+html+=`<div class="set ${cls}">
 <input type="number" placeholder="kg" value="${s.sets[i].weight}" onchange="upd(${si},${i},'weight',this.value)">
 <input type="number" placeholder="reps" value="${s.sets[i].reps}" onchange="upd(${si},${i},'reps',this.value)">
 </div>`;
 }
 
-// ISOLATIONS
-html+=`<h4>Isolation Exercises</h4>
-<button class="secondary" onclick="toggleIso(${si})">
-${s.isoLocked?'Edit Isolation Exercises':'Lock Isolation Exercises'}
-</button>`;
-
+// ISOS
+html+=`<h4>Isolation</h4>
+<button class="secondary" onclick="toggleIso(${si})">${s.isoLocked?'Edit':'Lock'} Isolation</button>`;
 s.isolations.forEach((iso,ii)=>{
-const prevIso=prev?.isolations?.[ii]||{};
-const val=f=>iso[f]||prevIso[f]||'';
-html+=`
-<div class="iso ${s.isoLocked?'locked':''}">
+const val=f=>iso[f]||prevIso?.isolations?.[ii]?.[f]||'';
+html+=`<div class="iso ${s.isoLocked?'locked':''}">
 <input ${s.isoLocked?'readonly':''} placeholder="Exercise" value="${val('name')}" onchange="isoUpd(${si},${ii},'name',this.value)">
-<input ${s.isoLocked?'readonly':''} type="number" placeholder="Sets" value="${val('sets')}" onchange="isoUpd(${si},${ii},'sets',this.value)">
-<input ${s.isoLocked?'readonly':''} type="number" placeholder="Reps" value="${val('reps')}" onchange="isoUpd(${si},${ii},'reps',this.value)">
-<input ${s.isoLocked?'readonly':''} type="number" placeholder="Weight" value="${val('weight')}" onchange="isoUpd(${si},${ii},'weight',this.value)">
+<input ${s.isoLocked?'readonly':''} placeholder="Sets" value="${val('sets')}" onchange="isoUpd(${si},${ii},'sets',this.value)">
+<input ${s.isoLocked?'readonly':''} placeholder="Reps" value="${val('reps')}" onchange="isoUpd(${si},${ii},'reps',this.value)">
+<input ${s.isoLocked?'readonly':''} placeholder="Weight" value="${val('weight')}" onchange="isoUpd(${si},${ii},'weight',this.value)">
 </div>`;
 });
 
-html+=`
-<textarea maxlength="260" placeholder="Session notes" onchange="note(${si},this.value)">${s.notes||''}</textarea>
+html+=`<textarea maxlength="260" placeholder="Notes" onchange="note(${si},this.value)">${s.notes||''}</textarea>
 <button onclick="complete(${si})">Complete Session</button>
-</div>`;
+</div></div></div>`;
 });
 
-document.getElementById('sessions').innerHTML=html;
+sessions.innerHTML=html;
 renderChart();
 }
 
 function upd(s,i,f,v){data.weeks[currentWeek-1].sessions[s].sets[i][f]=v;save();render();}
 function isoUpd(s,i,f,v){data.weeks[currentWeek-1].sessions[s].isolations[i][f]=v;save();}
-function toggleIso(s){const sess=data.weeks[currentWeek-1].sessions[s];sess.isoLocked=!sess.isoLocked;save();render();}
+function toggleIso(s){data.weeks[currentWeek-1].sessions[s].isoLocked^=1;save();render();}
 function note(s,v){data.weeks[currentWeek-1].sessions[s].notes=v;save();}
-
 function complete(s){
 const wk=data.weeks[currentWeek-1];
 data.history.push(JSON.parse(JSON.stringify({
@@ -213,7 +238,7 @@ const ctx=document.getElementById('chart');
 const ds=lifts.map((l,i)=>({
 label:l,
 data:data.history.filter(h=>h.lift===l)
-.map(h=>avg1RM(h.sets)),
+.map(h=>session1RM(h.weekType,h.sets)),
 borderColor:['#2563eb','#dc2626','#16a34a'][i],
 tension:.3
 }));

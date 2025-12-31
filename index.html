@@ -3,228 +3,188 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>12-Week Training Logger</title>
+<title>Training Logger</title>
 
-<!-- PWA -->
-<!-- <link rel="manifest" href="manifest.json"> -->
-<meta name="theme-color" content="#3b82f6">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Training Log">
-<!-- <link rel="apple-touch-icon" href="icon.png"> -->
-
-<!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#f5f5f5;padding:20px;}
-.container{max-width:1200px;margin:0 auto;}
-.card{background:white;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);margin-bottom:20px;padding:20px;}
-h1{font-size:28px;margin-bottom:8px;color:#333;}
-h2{font-size:24px;color:#333;}
-h3{font-size:20px;color:#333;margin-bottom:10px;}
-h4{font-size:16px;color:#555;margin-bottom:10px;font-weight:600;}
-.subtitle{color:#666;margin-bottom:16px;}
-.btn{padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;margin:5px;}
-.btn-primary{background:#3b82f6;color:white;}
-.btn-danger{background:#ef4444;color:white;}
-.btn-small{padding:8px 12px;font-size:13px;}
-.input-group{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
-input, select, textarea{padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;}
-.input-lift{width:80px;}
-.input-reps{width:60px;}
-.input-weight{width:80px;}
-.set-container,.iso-container{background:#fff;padding:10px;border-radius:6px;margin-bottom:8px;}
-.rm-display{padding:5px 8px;background:#f0f9ff;border-radius:6px;color:#0369a1;font-weight:600;font-size:13px;}
-.chart-container{margin-top:20px;}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,Arial;background:#f5f5f5;padding:20px}
+.container{max-width:1200px;margin:auto}
+.card{background:#fff;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+h1,h3{margin-bottom:10px}
+.input-group{display:flex;gap:8px;flex-wrap:wrap}
+input,select,textarea{padding:8px;border:1px solid #ccc;border-radius:6px}
+.set{padding:10px;border-radius:6px;margin-bottom:6px}
+.up{background:#dcfce7}
+.down{background:#fee2e2}
+.rm{font-size:12px;color:#0369a1;font-weight:600}
 </style>
 </head>
 <body>
+
 <div class="container">
 
 <div class="card">
-<h1>12-Week Training Logger</h1>
-<p class="subtitle">Track your progression with last session comparison</p>
-<button class="btn btn-danger btn-small" onclick="resetAll()">Reset All / New Cycle</button>
+<h1>Training Logger</h1>
+<button onclick="resetAll()">Reset All Data</button>
 </div>
 
 <div class="card">
-<div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-<label>Training Cycle:
-<select id="cycleSelect" onchange="changeCycle(this.value)">
-<option value="Hybrid">Hybrid</option>
-<option value="Strength">Strength</option>
-</select></label>
+<select id="cycle" onchange="changeCycle(this.value)">
+<option>Hybrid</option>
+<option>Strength</option>
+</select>
 
-<label>Week Type:
-<select id="weekSelect" onchange="changeWeekType(this.value)">
-<option value="GVT">GVT</option>
-<option value="Core Session">Core Session</option>
-<option value="Breakdown Banded">Breakdown Banded</option>
-<option value="Breakdown Pause">Breakdown Pause</option>
-<option value="Breakdown Other">Breakdown Other</option>
-<option value="Mini-Peak">Mini-Peak</option>
-<option value="Peak">Peak</option>
-</select></label>
+<select id="weekType" onchange="changeWeekType(this.value)">
+<option>GVT</option>
+<option>Core Session</option>
+<option>Breakdown Banded</option>
+<option>Breakdown Pause</option>
+<option>Breakdown Other</option>
+<option>Mini-Peak</option>
+<option>Peak</option>
+</select>
 
-<label>Week Number:
-<select id="weekNumber" onchange="goToWeek(this.value)">
-</select></label>
-</div>
+<select id="weekNum" onchange="goWeek(this.value)"></select>
 </div>
 
-<div id="sessionsContainer"></div>
+<div id="sessions"></div>
 
-<div class="card chart-container">
-<h3>Weekly 1RM Progression</h3>
-<canvas id="progressChart" height="200"></canvas>
+<div class="card">
+<canvas id="chart"></canvas>
+</div>
+
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded',function(){
-
+let data;
 let currentWeek=1;
 let cycle='Hybrid';
-let weekType='GVT';
-let data=null;
 const lifts=['Squat','Bench','Deadlift'];
 
-// INIT DATA
-function saveData(){localStorage.setItem('trainingData',JSON.stringify(data));}
-function initData(){
+function init(){
 const saved=localStorage.getItem('trainingData');
-if(saved){data=JSON.parse(saved);} else {data={weeks:[],history:[],meta:{cycle:1}};}
-if(!data.weeks.length){
+if(saved){data=JSON.parse(saved);}
+else resetAll(true);
+
+const w=document.getElementById('weekNum');
+w.innerHTML='';
+for(let i=1;i<=12;i++)w.innerHTML+=`<option>${i}</option>`;
+render();
+}
+
+function resetAll(skipConfirm){
+if(!skipConfirm && !confirm('Delete all data?'))return;
+localStorage.removeItem('trainingData');
+data={weeks:[],history:[]};
 for(let w=1;w<=12;w++){
-let week={weekNum:w,weekType:'GVT',sessions:[]};
-lifts.forEach(lift=>{week.sessions.push({lift,sets:[],isolations:[{},{},{}],notes:''});});
-data.weeks.push(week);
+data.weeks.push({
+weekNum:w,
+weekType:'GVT',
+sessions:lifts.map(l=>({lift:l,sets:[],isolations:[{},{},{}],notes:''}))
+});
 }
-saveData();
-}
-populateWeekNumber();
-}
-
-// Populate Week Number
-function populateWeekNumber(){
-const sel=document.getElementById('weekNumber');
-sel.innerHTML='';
-for(let i=1;i<=12;i++){ sel.innerHTML+=`<option value="${i}">Week ${i}</option>`;}
-sel.value=currentWeek;
+save(); render();
 }
 
-// CALCS
-function calc1RM(w,r){ const ww=parseFloat(w), rr=parseFloat(r); if(!ww||!rr)return 0; return Math.round(ww*(1+rr/30)*10)/10;}
-function best1RM(session){ let max=0; session.sets.forEach(s=>{ const rm=calc1RM(s.weight,s.reps); if(rm>max) max=rm; }); return max;}
+function save(){localStorage.setItem('trainingData',JSON.stringify(data));}
 
-// RENDER
+function changeCycle(c){
+cycle=c;
+forceGVTReps();
+render();
+}
+
+function changeWeekType(w){
+data.weeks[currentWeek-1].weekType=w;
+forceGVTReps();
+save(); render();
+}
+
+function goWeek(w){currentWeek=parseInt(w); render();}
+
+function forceGVTReps(){
+const week=data.weeks[currentWeek-1];
+if(week.weekType!=='GVT')return;
+const reps=cycle==='Hybrid'?10:5;
+week.sessions.forEach(s=>{
+s.sets=[];
+for(let i=0;i<10;i++)s.sets.push({weight:'',reps});
+});
+}
+
+function calc1RM(w,r){
+w=parseFloat(w);r=parseFloat(r);
+return (!w||!r)?0:Math.round(w*(1+r/30));
+}
+
 function render(){
-document.getElementById('cycleSelect').value=cycle;
-document.getElementById('weekSelect').value=weekType;
-document.getElementById('weekNumber').value=currentWeek;
-renderSessions();
+document.getElementById('cycle').value=cycle;
+document.getElementById('weekType').value=data.weeks[currentWeek-1].weekType;
+document.getElementById('weekNum').value=currentWeek;
+
+const week=data.weeks[currentWeek-1];
+let html='';
+
+week.sessions.forEach((s,si)=>{
+const prev=data.history.slice().reverse().find(h=>h.lift===s.lift && h.weekType===week.weekType);
+const sets=(week.weekType==='GVT')?10:5;
+
+html+=`<div class="card"><h3>${s.lift}</h3>`;
+
+for(let i=0;i<sets;i++){
+s.sets[i]=s.sets[i]||{weight:'',reps:''};
+let cls='';
+if(prev&&prev.sets[i]){
+if(s.sets[i].weight>prev.sets[i].weight||s.sets[i].reps>prev.sets[i].reps)cls='up';
+if(s.sets[i].weight<prev.sets[i].weight||s.sets[i].reps<prev.sets[i].reps)cls='down';
+}
+
+html+=`
+<div class="set ${cls}">
+<input type="number" placeholder="kg" value="${s.sets[i].weight}" onchange="upd(${si},${i},'weight',this.value)">
+<input type="number" placeholder="reps" value="${s.sets[i].reps}" onchange="upd(${si},${i},'reps',this.value)">
+<span class="rm">1RM ${calc1RM(s.sets[i].weight,s.sets[i].reps)}</span>
+</div>`;
+}
+
+html+=`<textarea maxlength="260" placeholder="Notes" onchange="note(${si},this.value)">${s.notes||''}</textarea>`;
+html+=`<button onclick="complete(${si})">Complete Session</button></div>`;
+});
+
+document.getElementById('sessions').innerHTML=html;
 renderChart();
 }
 
-function renderSessions(){
-const week=data.weeks[currentWeek-1];
-weekType=week.weekType;
-let html='';
-week.sessions.forEach((session,s)=>{
-html+=`<div class="card"><h3>${session.lift}</h3>`;
-
-// Determine sets and default reps
-let setsCount = (weekType==='GVT') ? 10 : 5;
-let defaultReps = (weekType==='GVT') ? (cycle==='Hybrid'?10:5) : '';
-
-// Main sets
-for(let i=0;i<setsCount;i++){
-    session.sets[i] = session.sets[i] || {weight:'', reps: defaultReps};
-    html+=`<div class="set-container"><div class="input-group">
-    <input type="number" class="input-weight" placeholder="Weight" value="${session.sets[i].weight}" onchange="updateSet(${s},${i},'weight',this.value)">
-    <input type="number" class="input-reps" placeholder="Reps" value="${session.sets[i].reps}" onchange="updateSet(${s},${i},'reps',this.value)">
-    <div class="rm-display">1RM ${calc1RM(session.sets[i].weight,session.sets[i].reps)}</div>
-    </div></div>`;
+function upd(s,i,f,v){
+data.weeks[currentWeek-1].sessions[s].sets[i][f]=v;
+save(); render();
 }
-
-// Last equivalent session
-let prev=data.history.slice().reverse().find(h=>h.lift===session.lift && h.weekType===weekType);
-if(prev){
-html+=`<div style="font-size:13px;color:#555;">Last ${weekType}: `;
-prev.sets.forEach(s=>{html+=`${s.weight}x${s.reps} `;});
-html+='</div>';
-}
-
-// Isolation exercises
-html+=`<h4>Isolation Exercises</h4>`;
-session.isolations.forEach((iso,i)=>{
-let prevIso=prev?prev.isolations[i]:{};
-html+=`<div class="iso-container"><div class="input-group">
-<input type="text" placeholder="Exercise" value="${iso.name||prevIso.name||''}" onchange="updateIso(${s},${i},'name',this.value)">
-<input type="number" placeholder="Sets" value="${iso.sets||prevIso.sets||''}" onchange="updateIso(${s},${i},'sets',this.value)">
-<input type="number" placeholder="Reps" value="${iso.reps||prevIso.reps||''}" onchange="updateIso(${s},${i},'reps',this.value)">
-<input type="number" placeholder="Weight" value="${iso.weight||prevIso.weight||''}" onchange="updateIso(${s},${i},'weight',this.value)">
-</div></div>`;
-});
-
-// Notes box
-session.notes = session.notes || '';
-html+=`<div style="margin-top:8px;">
-<label>Session Notes (max 260 chars):</label>
-<textarea maxlength="260" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;" 
-onchange="updateNotes(${s},this.value)">${session.notes}</textarea>
-</div>`;
-
-html+=`<button class="btn btn-primary btn-small" onclick="completeSession(${s})" style="margin-top:8px;">Mark Session Complete</button>`;
-html+='</div>';
-});
-document.getElementById('sessionsContainer').innerHTML=html;
-}
-
-// Chart
-function renderChart(){
-const ctx=document.getElementById('progressChart').getContext('2d');
-const labels=data.history.map(h=>`Cycle ${h.cycle} W${h.weekNum}`);
-const datasets=lifts.map((lift,idx)=>{
-return {
-label:lift,
-data:data.history.filter(h=>h.lift===lift).map(h=>best1RM({sets:h.sets})),
-borderColor:idx===0?'#3b82f6':idx===1?'#ef4444':'#16a34a',
-backgroundColor:'transparent',
-tension:0.3
-};
-});
-if(window.myChart) window.myChart.destroy();
-window.myChart=new Chart(ctx,{type:'line',data:{labels,datasets}});
-}
-
-// ACTIONS
-window.changeCycle=c=>{cycle=c; render();}
-window.changeWeekType=w=>{weekType=w; data.weeks[currentWeek-1].weekType=w; render();}
-window.goToWeek=w=>{currentWeek=parseInt(w); render();}
-window.updateSet=(s,i,f,v)=>{data.weeks[currentWeek-1].sessions[s].sets[i][f]=v; saveData(); render();}
-window.updateIso=(s,i,f,v)=>{data.weeks[currentWeek-1].sessions[s].isolations[i][f]=v; saveData();}
-window.updateNotes=(s,v)=>{data.weeks[currentWeek-1].sessions[s].notes=v; saveData();}
-window.completeSession=s=>{
-const week=data.weeks[currentWeek-1];
-const session=week.sessions[s];
+function note(s,v){data.weeks[currentWeek-1].sessions[s].notes=v; save();}
+function complete(s){
+const wk=data.weeks[currentWeek-1];
 data.history.push({
-lift:session.lift,
-weekType:weekType,
-weekNum:week.weekNum,
-cycle:cycle,
-sets:session.sets.map(s=>({weight:s.weight,reps:s.reps})),
-isolations:session.isolations.map(i=>({name:i.name,sets:i.sets,reps:i.reps,weight:i.weight})),
-notes:session.notes
+lift:wk.sessions[s].lift,
+weekType:wk.weekType,
+weekNum:wk.weekNum,
+sets:JSON.parse(JSON.stringify(wk.sessions[s].sets))
 });
-saveData(); render();
+save(); render();
 }
-window.resetAll=()=>{if(confirm('Delete all data and start new cycle?')){data.meta.cycle+=1; data.weeks=[]; initData(); currentWeek=1; render();}}
 
-initData(); render();
+function renderChart(){
+const ctx=document.getElementById('chart');
+const ds=lifts.map((l,i)=>({
+label:l,
+data:data.history.filter(h=>h.lift===l).map(h=>calc1RM(h.sets[0].weight,h.sets[0].reps)),
+borderColor:['#2563eb','#dc2626','#16a34a'][i],
+tension:.3
+}));
+new Chart(ctx,{type:'line',data:{labels:data.history.map(h=>`W${h.weekNum}`),datasets:ds}});
+}
 
-});
+init();
 </script>
 </body>
 </html>

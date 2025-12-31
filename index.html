@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Training Logger</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -24,6 +24,21 @@ button{cursor:pointer}
 .small{font-size:12px;color:#555}
 textarea{resize:none;width:100%}
 .locked{opacity:.6}
+
+/* Weight highlights */
+.weight-up{background:#dcfce7}
+.weight-down{background:#fee2e2}
+.weight-pb{background:#fde68a}
+
+/* PB badge */
+.pb-badge{
+  background:#f59e0b;
+  color:#fff;
+  font-size:11px;
+  padding:2px 6px;
+  border-radius:12px;
+  font-weight:600;
+}
 </style>
 </head>
 
@@ -86,7 +101,6 @@ function isWeekLocked(w){
     db.lifts[l].some(s => s.week===w && s.completed)
   );
 }
-
 function blockIfLocked(){
   if(isWeekLocked(currentWeek)){
     alert('This week is completed and cannot be edited.');
@@ -102,14 +116,30 @@ function avg1RM(sets,peak){
     ? Math.max(...sets.map(s=>calc1RM(s.w,s.r)))
     : Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);
 }
-
 function prevEquivalent(lift,type,cycle){
   const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type&&x.cycle===cycle);
   return s.length ? s[s.length-1] : null;
 }
-
 function prevIsolation(lift){
   return db.isolations[lift].find(s=>s.week===currentWeek-1) || null;
+}
+
+/* Weight colour + PB */
+function weightClass(curr, prev, lift){
+  if(!curr || !prev) return '';
+  const c=Number(curr), p=Number(prev);
+  if(isNaN(c)||isNaN(p)) return '';
+  if(!db.pbs[lift] || c>=db.pbs[lift]) return 'weight-pb';
+  if(c>p) return 'weight-up';
+  if(c<p) return 'weight-down';
+  return '';
+}
+function pbBadge(curr,lift){
+  if(!curr) return '';
+  if(!db.pbs[lift] || Number(curr)>=db.pbs[lift]){
+    return '<span class="pb-badge">PB</span>';
+  }
+  return '';
 }
 
 /* ---------------- RENDER ---------------- */
@@ -117,17 +147,14 @@ function render(){
   const locked=isWeekLocked(currentWeek);
   cycleSel.disabled=locked;
   typeSel.disabled=locked;
-
-  document.getElementById('weekTitle').textContent =
-    `Week ${currentWeek}${locked?' 🔒':''}`;
-
+  document.getElementById('weekTitle').textContent=`Week ${currentWeek}${locked?' 🔒':''}`;
   renderWeekButtons();
+
   const container=document.getElementById('sessions');
   container.innerHTML='';
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
     let ses=db.lifts[lift].find(s=>s.week===currentWeek);
-
     if(!ses){
       if(locked) return;
       ses={week:currentWeek,cycle:cycleSel.value,weekType:typeSel.value,sets:[],isolations:[],notes:'',completed:false};
@@ -137,7 +164,6 @@ function render(){
     const gvt=ses.weekType==='GVT';
     const setCount=gvt?10:5;
     const fixedReps=gvt?(ses.cycle==='Strength'?5:10):null;
-
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
 
     for(let i=0;i<setCount;i++){
@@ -149,9 +175,7 @@ function render(){
     const prevIso=prevIsolation(lift);
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
-      if(prevIso){
-        Object.assign(ses.isolations[i],prevIso.isolations[i]||{});
-      }
+      if(prevIso) Object.assign(ses.isolations[i],prevIso.isolations[i]||{});
     }
 
     const card=document.createElement('div');
@@ -167,21 +191,20 @@ function render(){
       prevMain.sets.forEach(s=>prev.innerHTML+=`${s.w}×${s.r}<br>`);
     } else prev.innerHTML+='—<br>';
 
-    if(prevIso){
-      prevIso.isolations.forEach(i=>{
-        if(i.name) prev.innerHTML+=`<span class="small">${i.name} ${i.sets}×${i.reps}@${i.weight}</span><br>`;
-      });
-    }
-
     const curr=document.createElement('div'); curr.className='curr';
 
     ses.sets.forEach((s,i)=>{
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" ${locked?'disabled':''}
+        <input type="number"
+          value="${s.w}"
+          class="${weightClass(s.w,prevMain?.sets[i]?.w,lift)}"
+          ${locked?'disabled':''}
           oninput="setMain('${lift}',${i},'w',this.value)">
-        <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${locked?'disabled':''}
+        ${pbBadge(s.w,lift)}
+        <input type="number" value="${s.r}"
+          ${fixedReps?'disabled':''} ${locked?'disabled':''}
           oninput="setMain('${lift}',${i},'r',this.value)">
       </div>`;
     });
@@ -190,14 +213,30 @@ function render(){
     ses.isolations.forEach((iso,i)=>{
       curr.innerHTML+=`
       <div class="iso">
+        <div class="small"><strong>Isolation ${i+1}</strong></div>
+        <label class="small">Exercise</label>
         <input value="${iso.name||''}" ${locked?'disabled':''}
           oninput="setIso('${lift}',${i},'name',this.value)">
-        <input type="number" value="${iso.sets||''}" ${locked?'disabled':''}
-          oninput="setIso('${lift}',${i},'sets',this.value)">
-        <input type="number" value="${iso.reps||''}" ${locked?'disabled':''}
-          oninput="setIso('${lift}',${i},'reps',this.value)">
-        <input type="number" value="${iso.weight||''}" ${locked?'disabled':''}
-          oninput="setIso('${lift}',${i},'weight',this.value)">
+        <div class="row">
+          <div>
+            <label class="small">Sets</label>
+            <input type="number" value="${iso.sets||''}" ${locked?'disabled':''}
+              oninput="setIso('${lift}',${i},'sets',this.value)">
+          </div>
+          <div>
+            <label class="small">Reps</label>
+            <input type="number" value="${iso.reps||''}" ${locked?'disabled':''}
+              oninput="setIso('${lift}',${i},'reps',this.value)">
+          </div>
+          <div>
+            <label class="small">Weight</label>
+            <input type="number"
+              value="${iso.weight||''}"
+              class="${weightClass(iso.weight,prevIso?.isolations[i]?.weight,lift)}"
+              ${locked?'disabled':''}
+              oninput="setIso('${lift}',${i},'weight',this.value)">
+          </div>
+        </div>
       </div>`;
     });
 
@@ -236,7 +275,6 @@ function complete(lift){
 
 /* ---------------- NAV ---------------- */
 function changeWeek(d){ currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); render(); }
-
 function resetAll(){
   if(confirm('Delete all data?')){
     db={lifts:{Squat:[],Bench:[],Deadlift:[]},isolations:{Squat:[],Bench:[],Deadlift:[]},history:[],pbs:{}};

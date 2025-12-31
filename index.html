@@ -113,7 +113,6 @@ function weightClass(curr, prev, lift){
 function render(){
   const container=document.getElementById('sessions');
   container.innerHTML='';
-  const lockedWeek = false; // Each lift locks independently
 
   document.getElementById('weekTitle').textContent = `Week ${currentWeek}`;
 
@@ -133,12 +132,12 @@ function render(){
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
     const prevIso=prevIsolation(lift);
 
-    // Sets carryover
-    for(let i=0;i<setCount;i++){
-      if(!ses.sets[i]) ses.sets[i]={w:'',r:fixedReps||''};
-      if(prevMain && ses.sets[i].w==='') ses.sets[i].w=prevMain.sets[i]?.w||'';
-      if(prevMain && ses.sets[i].r==='') ses.sets[i].r=prevMain.sets[i]?.r||fixedReps||'';
-    }
+    // Ensure correct number of sets
+    ses.sets = Array.from({length:setCount},(_,i)=>{
+      const prevW = ses.sets[i]?.w || '';
+      const prevR = ses.sets[i]?.r || (fixedReps||'');
+      return {w:prevW,r:prevR};
+    });
 
     // Isolations carryover
     for(let i=0;i<3;i++){
@@ -282,6 +281,33 @@ function drawChart(){
     options:{responsive:true,plugins:{legend:{position:'top'}}}
   });
 }
+
+/* ---------------- DROP DOWN HANDLERS ---------------- */
+typeSel.onchange = () => {
+  ['Squat','Bench','Deadlift'].forEach(lift=>{
+    const ses=db.lifts[lift].find(s=>s.week===currentWeek);
+    if(ses){
+      ses.weekType = typeSel.value;
+      const gvt=ses.weekType==='GVT';
+      const setCount=gvt?10:5;
+      const fixedReps=gvt?(cycleSel.value==='Strength'?5:10):null;
+      ses.sets = Array.from({length:setCount},(_,i)=>({w:'',r:fixedReps||''}));
+      ses.completed=false;
+    }
+  });
+  render();
+};
+
+cycleSel.onchange = () => {
+  ['Squat','Bench','Deadlift'].forEach(lift=>{
+    const ses=db.lifts[lift].find(s=>s.week===currentWeek);
+    if(ses && ses.weekType==='GVT'){
+      const fixedReps=cycleSel.value==='Strength'?5:10;
+      ses.sets.forEach(s=>s.r=fixedReps);
+    }
+  });
+  render();
+};
 
 render();
 </script>

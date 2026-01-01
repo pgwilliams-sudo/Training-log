@@ -159,10 +159,10 @@ function render(){
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" ${ses.completed?'disabled':''}
-          oninput="setMain('${lift}',${i},'w',this.value)">
-        <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''}
-          oninput="setMain('${lift}',${i},'r',this.value)">
+        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} data-lift="${lift}" data-index="${i}" data-field="w"
+          onkeydown="handleAutoCopy(event)">
+        <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''} data-lift="${lift}" data-index="${i}" data-field="r"
+          onkeydown="handleAutoCopy(event)">
       </div>`;
     });
 
@@ -202,6 +202,23 @@ function render(){
 
   drawChart();
   save();
+}
+
+/* ---------------- AUTO-COPY ON TAB/ENTER ---------------- */
+function handleAutoCopy(e){
+  if(e.key==='Enter' || e.key==='Tab'){
+    const input = e.target;
+    const lift = input.dataset.lift;
+    const idx = parseInt(input.dataset.index);
+    const field = input.dataset.field;
+    const val = input.value;
+    if(!val) return;
+    const ses = db.lifts[lift].find(s=>s.week===currentWeek);
+    for(let i=idx+1;i<ses.sets.length;i++){
+      if(!ses.sets[i][field]) ses.sets[i][field]=val;
+    }
+    render();
+  }
 }
 
 /* ---------------- SETTERS ---------------- */
@@ -263,16 +280,27 @@ function drawChart(){
     type:'line',
     data:{
       labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
-      datasets:['Squat','Bench','Deadlift'].map(l=>({
-        label:l,
-        data:Array.from({length:MAX_WEEKS},(_,i)=>{
+      datasets:['Squat','Bench','Deadlift'].map(l=>{
+        const data = Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
           return s ? Math.max(...s.sets.map(s=>calc1RM(s.w,s.r))) : null;
-        }),
-        borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
-        fill:false,
-        pointRadius: db.lifts[l].map(s=>s.week).includes(currentWeek)?6:3 // example
-      }))
+        });
+        const pointRadius = data.map((val,i)=>{
+          const s=db.lifts[l].find(x=>x.week===i+1);
+          if(s && (s.weekType==='Mini-Peak' || s.weekType==='Peak')){
+            const max = Math.max(...s.sets.map(s=>s.w));
+            if(s.sets.some(s2=>s2.w==max)) return 9; // 3x normal size
+          }
+          return 3;
+        });
+        return {
+          label:l,
+          data,
+          borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
+          fill:false,
+          pointRadius
+        };
+      })
     },
     options:{responsive:true,plugins:{legend:{position:'top'}}}
   });

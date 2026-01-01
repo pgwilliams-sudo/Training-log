@@ -99,9 +99,7 @@ function prevIsolation(lift){
 function render(){
   const container=document.getElementById('sessions');
   container.innerHTML='';
-
   document.getElementById('weekTitle').textContent = `Week ${currentWeek}`;
-
   renderWeekButtons();
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
@@ -124,6 +122,7 @@ function render(){
       return {w:prevW,r:prevR};
     });
 
+    // Isolation carryover from last week
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
       if(prevIso){
@@ -155,9 +154,12 @@ function render(){
       <div class="set">
         ${i+1}
         <input type="number" value="${s.w}" ${ses.completed?'disabled':''}
-          oninput="setMain('${lift}',${i},'w',this.value)">
+          onblur="setMain('${lift}',${i},'w',this.value,true)"
+          onkeydown="if(event.key==='Enter'){setMain('${lift}',${i},'w',this.value,true);}">
+
         <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''}
-          oninput="setMain('${lift}',${i},'r',this.value)">
+          onblur="setMain('${lift}',${i},'r',this.value,true)"
+          onkeydown="if(event.key==='Enter'){setMain('${lift}',${i},'r',this.value,true);}">
       </div>`;
     });
 
@@ -199,37 +201,34 @@ function render(){
   save();
 }
 
-/* ---------------- SETTERS WITH AUTO-COPY ---------------- */
-function setMain(l,i,f,v){
+/* ---------------- SETTERS ---------------- */
+function setMain(l,i,f,v,autoCopy=false){
   const ses=db.lifts[l].find(s=>s.week===currentWeek);
-  if(!ses || ses.completed) return;
-  ses.sets[i][f]=v;
-
-  const gvt=ses.weekType==='GVT';
-  const fixedReps=gvt?(ses.cycle==='Strength'?5:10):null;
-
-  // Auto-copy logic: only for main lifts
-  if(i===0){
-    if(gvt && f==='w'){ // copy first weight to remaining 9 sets
-      ses.sets.slice(1).forEach(s=>{ if(!s.w) s.w=v; });
+  if(!ses.completed){
+    ses.sets[i][f]=v;
+    // Auto-copy logic
+    const gvt=ses.weekType==='GVT';
+    const fixedReps=gvt?(ses.cycle==='Strength'?5:10):null;
+    if(autoCopy){
+      if(f==='w' && gvt && v){
+        for(let j=0;j<ses.sets.length;j++) ses.sets[j].w=v;
+      } else if(f==='r' && !gvt && v){
+        for(let j=0;j<ses.sets.length;j++) ses.sets[j].r=v;
+      }
     }
-    if(!gvt && f==='r'){ // copy first rep to remaining sets
-      ses.sets.slice(1).forEach(s=>{ if(!s.r) s.r=v; });
-    }
+    save(); render();
   }
-
-  save();
-  render();
 }
-function setIso(l,i,f,v){ const ses=db.lifts[l].find(s=>s.week===currentWeek); if(!ses || ses.completed) return; ses.isolations[i][f]=v; save(); render(); }
-function setNotes(l,v){ const ses=db.lifts[l].find(s=>s.week===currentWeek); if(!ses || ses.completed) return; ses.notes=v; save(); }
+
+function setIso(l,i,f,v){ const ses=db.lifts[l].find(s=>s.week===currentWeek); if(!ses.completed){ ses.isolations[i][f]=v; save(); render(); } }
+function setNotes(l,v){ const ses=db.lifts[l].find(s=>s.week===currentWeek); if(!ses.completed){ ses.notes=v; save(); } }
 
 /* ---------------- COMPLETE ---------------- */
 function complete(lift){
   const s=db.lifts[lift].find(x=>x.week===currentWeek);
   s.completed=true;
-  db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
-  db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
+  const max1RM=avg1RM(s.sets,s.weekType==='Peak');
+  db.history.push({lift,max1RM});
   save(); render();
 }
 
@@ -282,11 +281,12 @@ function drawChart(){
         label:l,
         data:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
-          return s ? Math.max(...s.sets.map(s=>calc1RM(s.w,s.r))) : null; // max for chart
+          return s ? avg1RM(s.sets,s.weekType==='Peak') : null;
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
         fill:false,
-        pointRadius:5
+        pointRadius: db.lifts[l].map(s=>s.weekType==='Peak'||s.weekType==='Mini-Peak'?5:3),
+        pointBackgroundColor: db.lifts[l].map(s=>(s.weekType==='Peak'||s.weekType==='Mini-Peak')?'gold':'#fff')
       }))
     },
     options:{responsive:true,plugins:{legend:{position:'top'}}}

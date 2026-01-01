@@ -26,7 +26,6 @@ textarea{resize:none;width:100%;}
 .weight-up{background:#dcfce7;}    /* green */
 .weight-down{background:#fee2e2;}  /* red */
 .weight-pb{background:#fde68a;}    /* gold */
-.pb-badge{background:#fde68a;padding:2px 6px;border-radius:4px;margin-left:4px;font-size:12px;}
 </style>
 </head>
 <body>
@@ -82,14 +81,8 @@ function save(){ localStorage.setItem('db',JSON.stringify(db)); }
 
 /* ---------------- HELPERS ---------------- */
 function calc1RM(w,r){ return r>0 ? Math.round(w*(1+r/30)) : 0; }
-function peak1RM(sets){
-  if(!sets.length) return 0;
-  return Math.max(...sets.map(s=>calc1RM(s.w,s.r)));
-}
-function avg1RM(sets,peak){
-  if(!sets.length) return 0;
-  return peak ? peak1RM(sets) : Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);
-}
+function peak1RM(sets){ return sets.length ? Math.max(...sets.map(s=>calc1RM(s.w,s.r))) : 0; }
+function avg1RM(sets){ return sets.length ? Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length) : 0; }
 
 function prevEquivalent(lift,type,cycle){
   const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type&&x.cycle===cycle);
@@ -134,28 +127,22 @@ function render(){
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
     const prevIso=prevIsolation(lift);
 
-    // MAIN SETS
     ses.sets = Array.from({length:setCount},(_,i)=>{
       const prevW = ses.sets[i]?.w || '';
       const prevR = ses.sets[i]?.r || (fixedReps||'');
       return {w:prevW,r:prevR};
     });
 
-    // ISOLATIONS
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
       if(prevIso){
-        Object.assign(ses.isolations[i],prevIso.isolations[i]||{});
+        Object.assign(ses.isolations[i],prevIso.isolations[i]?.[i]||{});
       }
     }
 
     const card=document.createElement('div');
     card.className='card session'+(ses.completed?' locked':'');
-    const peakMax = peak1RM(ses.sets);
-    const prevPB = db.pbs[lift] || 0;
-    const showPB = (ses.weekType==='Mini-Peak'||ses.weekType==='Peak') && peakMax > prevPB;
-
-    card.innerHTML=`<h3>${lift}${showPB?'<span class="pb-badge">PB!</span>':''}</h3>`;
+    card.innerHTML=`<h3>${lift}${ses.completed?'<span class="pb-badge">Completed</span>':''}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
     const prev=document.createElement('div'); prev.className='prev';
@@ -165,8 +152,8 @@ function render(){
       prevMain.sets.forEach(s=>prev.innerHTML+=`${s.w}×${s.r}<br>`);
     } else prev.innerHTML+='—<br>';
     if(prevIso){
-      prevIso.isolations.forEach(i=>{
-        if(i.name) prev.innerHTML+=`<span class="small">${i.name} ${i.sets}×${i.reps}@${i.weight}</span><br>`;
+      prevIso.isolations.forEach((iso,i)=>{
+        prev.innerHTML+=`<span class="small">${iso.name||''} ${iso.sets||''}×${iso.reps||''}@${iso.weight||''}</span><br>`;
       });
     }
 
@@ -231,9 +218,9 @@ function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(
 function complete(lift){
   const s=db.lifts[lift].find(x=>x.week===currentWeek);
   s.completed=true;
-  const peakMax = peak1RM(s.sets);
-  if(!db.pbs[lift] || peakMax > db.pbs[lift]) db.pbs[lift] = peakMax;
-
+  const max=peak1RM(s.sets);
+  db.history.push({lift,max});
+  if(!db.pbs[lift] || max>db.pbs[lift]) db.pbs[lift]=max;
   db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
   db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
   save(); render();
@@ -278,23 +265,49 @@ function renderWeekButtons(){
 /* ---------------- CHART ---------------- */
 let chart;
 function drawChart(){
-  const ctx=document.getElementById('rmChart');
+  const ctx = document.getElementById('rmChart');
   if(chart) chart.destroy();
-  chart=new Chart(ctx,{
+
+  const labels = Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`);
+  const datasets = ['Squat','Bench','Deadlift'].map(lift=>{
+    const data = [];
+    const pointBackground = [];
+
+    for(let i=0;i<MAX_WEEKS;i++){
+      const s = db.lifts[lift].find(x=>x.week===i+1);
+      if(s){
+        const max = peak1RM(s.sets);
+        data.push(max);
+
+        // Only PB in Mini-Peak or Peak
+        if((s.weekType==='Mini-Peak' || s.weekType==='Peak') && max===db.pbs[lift]){
+          pointBackground.push('#fde68a'); // gold
+        } else pointBackground.push(undefined);
+      } else { data.push(null); pointBackground.push(undefined); }
+    }
+
+    return {
+      label: lift,
+      data,
+      borderColor: lift==='Squat'?'#3b82f6':lift==='Bench'?'#ef4444':'#16a34a',
+      fill:false,
+      pointBackgroundColor: pointBackground,
+      pointRadius:6,
+      pointHoverRadius:8
+    };
+  });
+
+  chart = new Chart(ctx,{
     type:'line',
-    data:{
-      labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
-      datasets:['Squat','Bench','Deadlift'].map(l=>({
-        label:l,
-        data:Array.from({length:MAX_WEEKS},(_,i)=>{
-          const s=db.lifts[l].find(x=>x.week===i+1);
-          return s ? peak1RM(s.sets) : null;
-        }),
-        borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
-        fill:false
-      }))
-    },
-    options:{responsive:true,plugins:{legend:{position:'top'}}}
+    data:{labels,datasets},
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'top'},
+        title:{display:true,text:'Heaviest 1RM per Week (PB in gold)'}
+      },
+      scales:{y:{beginAtZero:true,title:{display:true,text:'1RM (kg)'}}}
+    }
   });
 }
 

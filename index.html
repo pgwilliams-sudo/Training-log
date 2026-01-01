@@ -101,14 +101,14 @@ function render(){
     const setCount=gvt?10:5;
     const fixedReps=gvt?10:null;
 
-    // --- Main sets: only current week values
+    // --- Main sets
     ses.sets=Array.from({length:setCount},(_,i)=>{
       const prevW=ses.sets[i]?.w||'';
       const prevR=ses.sets[i]?.r||(fixedReps||'');
       return {w:prevW,r:prevR};
     });
 
-    // --- Isolation sets: carryover from previous week
+    // --- Isolation sets: carryover
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
     }
@@ -145,8 +145,8 @@ function render(){
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} onblur="autoCopyMain('${lift}',${i},'w',this.value)">
-        <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''} onblur="autoCopyMain('${lift}',${i},'r',this.value)">
+        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} onblur="autoCopyCurrent('${lift}',${i},'w',this.value)">
+        <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''} onblur="autoCopyCurrent('${lift}',${i},'r',this.value)">
       </div>`;
     });
 
@@ -188,8 +188,8 @@ function render(){
   save();
 }
 
-// ---------------- AUTO COPY within session ONLY
-function autoCopyMain(lift,i,field,value){
+// --- Auto-copy only within current week session on blur/tab/enter
+function autoCopyCurrent(lift,i,field,value){
   const ses=db.lifts[lift].find(s=>s.week===currentWeek);
   ses.sets[i][field]=value;
   for(let j=i+1;j<ses.sets.length;j++){
@@ -201,19 +201,12 @@ function autoCopyMain(lift,i,field,value){
 
 function setIso(l,i,f,v){db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save();}
 function setNotes(l,v){db.lifts[l].find(s=>s.week===currentWeek).notes=v; save();}
-function complete(l){
-  const s=db.lifts[l].find(x=>x.week===currentWeek);
-  s.completed=true;
-  db.isolations[l]=db.isolations[l].filter(x=>x.week!==currentWeek);
-  db.isolations[l].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
-  save(); render();
-}
-function unlock(l){const s=db.lifts[l].find(x=>x.week===currentWeek);if(s){s.completed=false; render();}}
-
-function changeWeek(d){currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); render();}
+function complete(l){const s=db.lifts[l].find(x=>x.week===currentWeek);s.completed=true;db.isolations[l]=db.isolations[l].filter(x=>x.week!==currentWeek);db.isolations[l].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});save();render();}
+function unlock(l){const s=db.lifts[l].find(x=>x.week===currentWeek);if(s){s.completed=false;render();}}
+function changeWeek(d){currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d));render();}
 function resetAll(){if(confirm('Delete all data?')){db={lifts:{Squat:[],Bench:[],Deadlift:[]},isolations:{Squat:[],Bench:[],Deadlift:[]},history:[],pbs:{}};currentWeek=1;save();render();}}
 
-// ---------------- CHART
+// --- Chart
 let chart;
 function drawChart(){
   const ctx=document.getElementById('rmChart');
@@ -227,10 +220,10 @@ function drawChart(){
         data:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
           if(!s) return null;
-          return Math.max(...s.sets.map(set=>calc1RM(set.w,set.r)));
+          return Math.max(...s.sets.map(set=>Number(set.w)||0));
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
-        pointRadius: Array.from({length:MAX_WEEKS},(_,i)=>{
+        pointRadius:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
           if(!s) return 3;
           const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
@@ -244,8 +237,8 @@ function drawChart(){
   });
 }
 
-// ---------------- DROP DOWN HANDLER
-typeSel.onchange=()=>{['Squat','Bench','Deadlift'].forEach(lift=>{const ses=db.lifts[lift].find(s=>s.week===currentWeek);if(ses){ses.weekType=typeSel.value; render();}});};
+// --- Drop-down handler
+typeSel.onchange=()=>{['Squat','Bench','Deadlift'].forEach(lift=>{const ses=db.lifts[lift].find(s=>s.week===currentWeek);if(ses){ses.weekType=typeSel.value;render();}});};
 
 render();
 </script>

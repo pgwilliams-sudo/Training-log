@@ -1,263 +1,283 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Training Logger</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial;background:#f3f4f6;padding:12px}
-.card{background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 2px 4px rgba(0,0,0,.08)}
-.row{display:flex;gap:10px;flex-wrap:wrap}
-.session{margin-top:10px}
-.set{display:flex;gap:6px;margin-bottom:6px}
-.iso{background:#f9fafb;padding:8px;border-radius:6px;margin-bottom:6px}
-.small{font-size:12px;color:#555}
-.locked{opacity:.6;pointer-events:none}
-textarea{width:100%;resize:none}
-
-.weight-up{background:#dcfce7}
-.weight-down{background:#fee2e2}
-.weight-pb{background:#fde68a}
-.pb-badge{background:#fde68a;padding:2px 6px;border-radius:4px;margin-left:6px;font-size:12px}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  background:#f5f5f5;
+  padding:16px;
+}
+.card {
+  background:#fff;
+  padding:16px;
+  margin-bottom:16px;
+  border-radius:8px;
+  box-shadow:0 2px 4px rgba(0,0,0,.1);
+}
+.row { display:flex; gap:8px; flex-wrap:wrap; }
+input, select, textarea {
+  padding:8px;
+  border:1px solid #ccc;
+  border-radius:6px;
+}
+button {
+  padding:8px 14px;
+  border:none;
+  border-radius:6px;
+  background:#2563eb;
+  color:#fff;
+}
+button.locked { background:#9ca3af; }
+.set { display:flex; gap:6px; margin-bottom:6px; }
+.prev {
+  background:#f0f9ff;
+  padding:8px;
+  border-radius:6px;
+  font-size:13px;
+}
+.pb { background:gold; padding:4px 8px; border-radius:6px; font-weight:600; }
+.up { background:#dcfce7; }
+.down { background:#fee2e2; }
+.iso-prev {
+  font-size:12px;
+  color:#555;
+  background:#f8fafc;
+  padding:6px;
+  border-radius:6px;
+}
+.chart-box {
+  background:#fff;
+  padding:12px;
+  border-radius:8px;
+}
 </style>
 </head>
 
 <body>
 
 <div class="card">
-  <strong id="weekLabel">Week 1</strong>
+  <h2>Training Logger</h2>
   <div class="row">
     <button onclick="changeWeek(-1)">◀</button>
+    <strong id="weekLabel"></strong>
     <button onclick="changeWeek(1)">▶</button>
-
-    <select id="cycle">
-      <option>Strength</option>
-      <option>Hybrid</option>
-    </select>
-
-    <select id="weekType">
-      <option>GVT</option>
-      <option>Core Session</option>
-      <option>Breakdown Banded</option>
-      <option>Breakdown Pause</option>
-      <option>Breakdown Other</option>
-      <option>Mini-Peak</option>
-      <option>Peak</option>
-    </select>
-
-    <button onclick="resetAll()" style="background:#ef4444;color:#fff">Reset</button>
+    <button onclick="resetData()" style="background:#dc2626">Reset</button>
   </div>
 </div>
 
 <div id="sessions"></div>
 
-<div class="card">
-  <strong>Theoretical 1RM Progress</strong>
-  <div class="small" id="maxBox"></div>
-  <canvas id="chart"></canvas>
+<div class="chart-box">
+  <h3>1RM Progress</h3>
+  <canvas id="rmChart" height="160"></canvas>
+  <div id="actualMax"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
-/* ---------------- DATABASE ---------------- */
-let db = JSON.parse(localStorage.getItem('db')) || {
+/* ---------------- STORAGE ---------------- */
+
+let db = JSON.parse(localStorage.getItem("trainingDB")) || {
   sessions: [],
-  history: [],
-  isolations: {},
-  pbs: {}
+  currentWeek: 1
 };
 
-const lifts = ['Squat','Bench','Deadlift'];
-let currentWeek = 1;
+function saveDB() {
+  localStorage.setItem("trainingDB", JSON.stringify(db));
+}
 
-/* ---------------- UTIL ---------------- */
-const save = () => localStorage.setItem('db', JSON.stringify(db));
-const getSession = (lift) =>
-  db.sessions.find(s => s.week === currentWeek && s.lift === lift);
+/* ---------------- CONSTANTS ---------------- */
 
-const heaviest1RM = sets =>
-  Math.max(...sets.map(s => s.w && s.r ? Math.round(s.w*(1+s.r/30)) : 0),0);
+const lifts = ["Squat","Bench","Deadlift"];
+const sessionTypes = ["GVT","Core","Breakdown Banded","Breakdown Pause","Breakdown Other","Mini-Peak","Peak"];
 
-const prevEquivalent = (lift, type, cycle) =>
-  [...db.history].reverse().find(h =>
-    h.lift===lift && h.weekType===type && h.cycle===cycle);
+/* ---------------- HELPERS ---------------- */
+
+function setsFor(type) {
+  return type === "GVT" ? 10 : 5;
+}
+
+function findSession(week,lift) {
+  return db.sessions.find(s => s.week===week && s.lift===lift);
+}
+
+function prevSession(lift,type,week) {
+  return [...db.sessions]
+    .reverse()
+    .find(s => s.lift===lift && s.sessionType===type && s.week<week);
+}
+
+function prevIso(lift,week) {
+  return [...db.sessions]
+    .reverse()
+    .find(s => s.lift===lift && s.week<week);
+}
+
+function best1RM(session) {
+  let max = 0;
+  session.sets.forEach(s=>{
+    if(s.weight && s.reps) {
+      const rm = session.sessionType==="Peak"
+        ? s.weight
+        : s.weight * (1 + s.reps/30);
+      if(rm>max) max=rm;
+    }
+  });
+  return Math.round(max);
+}
 
 /* ---------------- RENDER ---------------- */
-function render(){
-  document.getElementById('weekLabel').textContent = `Week ${currentWeek}`;
-  const container=document.getElementById('sessions');
-  container.innerHTML='';
+
+function render() {
+  document.getElementById("weekLabel").textContent = "Week " + db.currentWeek;
+  const root = document.getElementById("sessions");
+  root.innerHTML = "";
 
   lifts.forEach(lift=>{
-    let s = getSession(lift);
-    if(!s){
-      s={week:currentWeek,lift,cycle:cycle.value,weekType:weekType.value,
-         sets:[],isolations:[],notes:'',completed:false};
-      db.sessions.push(s);
+    let session = findSession(db.currentWeek,lift);
+    if(!session) {
+      session = {
+        week: db.currentWeek,
+        lift,
+        cycle:"Strength",
+        sessionType:"GVT",
+        sets: Array.from({length:10},()=>({weight:"",reps:""})),
+        isolations: Array.from({length:3},()=>({name:"",sets:"",reps:"",weight:""})),
+        completed:false
+      };
+      db.sessions.push(session);
+      saveDB();
     }
 
-    const gvt = s.weekType==='GVT';
-    const setCount = gvt?10:5;
-    const fixedReps = gvt?(s.cycle==='Strength'?5:10):null;
+    const prev = prevSession(lift,session.sessionType,db.currentWeek);
+    const prevIsoData = prevIso(lift,db.currentWeek);
 
-    while(s.sets.length<setCount)
-      s.sets.push({w:'',r:fixedReps||''});
-    s.sets = s.sets.slice(0,setCount);
+    const card = document.createElement("div");
+    card.className="card";
 
-    while(s.isolations.length<3)
-      s.isolations.push({});
+    card.innerHTML = `
+      <h3>${lift}</h3>
+      <div class="row">
+        <select ${session.completed?"disabled":""}
+          onchange="updateType('${lift}',this.value)">
+          ${sessionTypes.map(t=>`<option ${t===session.sessionType?"selected":""}>${t}</option>`).join("")}
+        </select>
+      </div>
 
-    const prev = prevEquivalent(lift,s.weekType,s.cycle);
+      ${prev?`<div class="prev">
+        Prev ${session.sessionType}: ${best1RM(prev)}kg
+      </div>`:""}
 
-    const card=document.createElement('div');
-    card.className='card session'+(s.completed?' locked':'');
-    card.innerHTML=`<strong>${lift}${s.completed?'<span class="pb-badge">Completed</span>':''}</strong>`;
+      ${session.sets.map((s,i)=>`
+        <div class="set">
+          <input type="number" placeholder="kg"
+            value="${s.weight}"
+            ${session.completed?"disabled":""}
+            onblur="autoCopyWeight('${lift}',${i},this.value)">
+          <input type="number" placeholder="reps"
+            value="${s.reps}"
+            ${session.completed?"disabled":""}
+            onblur="autoCopyReps('${lift}',${i},this.value)">
+        </div>`).join("")}
 
-    /* SETS */
-    s.sets.forEach((set,i)=>{
-      card.innerHTML+=`
-      <div class="set">
-        ${i+1}
-        <input type="number" value="${set.w}" 
-          class="${weightClass(lift,set.w,prev?.sets?.[i]?.w)}"
-          oninput="setMain('${lift}',${i},'w',this.value)">
-        <input type="number" value="${set.r}" ${fixedReps?'disabled':''}
-          oninput="setMain('${lift}',${i},'r',this.value)">
-      </div>`;
-    });
+      <h4>Isolations</h4>
+      ${prevIsoData?`<div class="iso-prev">
+        Last: ${prevIsoData.isolations.map(i=>i.name+" "+i.weight+"kg").join(" | ")}
+      </div>`:""}
 
-    /* ISOLATIONS */
-    card.innerHTML+='<div class="small">Isolation</div>';
-    s.isolations.forEach((iso,i)=>{
-      card.innerHTML+=`
-      <div class="iso">
-        <input placeholder="Exercise" value="${iso.name||''}"
-          oninput="setIso('${lift}',${i},'name',this.value)">
-        <div class="row">
-          <input placeholder="Sets" value="${iso.sets||''}"
-            oninput="setIso('${lift}',${i},'sets',this.value)">
-          <input placeholder="Reps" value="${iso.reps||''}"
-            oninput="setIso('${lift}',${i},'reps',this.value)">
-          <input placeholder="Weight" value="${iso.weight||''}"
-            class="${weightClass(lift,iso.weight,prev?.isolations?.[i]?.weight)}"
-            oninput="setIso('${lift}',${i},'weight',this.value)">
-        </div>
-      </div>`;
-    });
+      ${session.isolations.map((i,idx)=>`
+        <div class="set">
+          <input placeholder="Name" value="${i.name}"
+            ${session.completed?"disabled":""}
+            onchange="updateIso('${lift}',${idx},'name',this.value)">
+          <input placeholder="kg" value="${i.weight}"
+            ${session.completed?"disabled":""}
+            onchange="updateIso('${lift}',${idx},'weight',this.value)">
+        </div>`).join("")}
 
-    card.innerHTML+=`
-      <textarea maxlength="260" oninput="s.notes=this.value">${s.notes}</textarea>
-      <button onclick="complete('${lift}')">Complete Session</button>
-      ${s.completed?`<button onclick="unlock('${lift}')">Unlock</button>`:''}
+      <button onclick="completeSession('${lift}')"
+        class="${session.completed?"locked":""}">
+        ${session.completed?"Completed":"Complete Session"}
+      </button>
     `;
 
-    container.append(card);
+    root.appendChild(card);
   });
 
-  drawChart();
-  save();
+  renderChart();
 }
 
-/* ---------------- LOGIC ---------------- */
-function weightClass(lift,c,p){
-  if(!c) return '';
-  c=Number(c); p=Number(p);
-  if(!db.pbs[lift] || c>=db.pbs[lift]) return 'weight-pb';
-  if(c>p) return 'weight-up';
-  if(c<p) return 'weight-down';
-  return '';
-}
+/* ---------------- ACTIONS ---------------- */
 
-function setMain(lift,i,f,v){
-  const s=getSession(lift);
-  s.sets[i][f]=v;
-
-  /* AUTO COPY */
-  if(f==='w' && s.weekType==='GVT' && i===0){
-    for(let j=1;j<s.sets.length;j++)
-      if(!s.sets[j].w) s.sets[j].w=v;
-  }
-  if(f==='r' && s.weekType!=='GVT' && i===0){
-    for(let j=1;j<s.sets.length;j++)
-      if(!s.sets[j].r) s.sets[j].r=v;
-  }
-
-  save(); render();
-}
-
-function setIso(l,i,f,v){
-  getSession(l).isolations[i][f]=v;
-  save();
-}
-
-function complete(lift){
-  const s=getSession(lift);
-  s.completed=true;
-
-  const oneRM = s.weekType==='Peak'
-    ? Math.max(...s.sets.map(x=>Number(x.w)||0))
-    : heaviest1RM(s.sets);
-
-  db.history.push({...s, oneRM});
-  db.pbs[lift]=Math.max(db.pbs[lift]||0,oneRM);
-  save(); render();
-}
-
-function unlock(lift){
-  getSession(lift).completed=false;
+function updateType(lift,type) {
+  const s = findSession(db.currentWeek,lift);
+  if(s.completed) return;
+  s.sessionType = type;
+  s.sets = Array.from({length:setsFor(type)},()=>({weight:"",reps:""}));
+  saveDB();
   render();
 }
 
-function changeWeek(d){
-  currentWeek=Math.max(1,currentWeek+d);
-  render();
+function autoCopyWeight(lift,i,val) {
+  const s = findSession(db.currentWeek,lift);
+  if(s.sessionType==="GVT" && i===0) {
+    s.sets.forEach((set,idx)=>{ if(idx>0) set.weight=val; });
+    saveDB(); render();
+  }
 }
 
-function resetAll(){
-  if(confirm('Delete all data?')){
-    localStorage.clear();
+function autoCopyReps(lift,i,val) {
+  const s = findSession(db.currentWeek,lift);
+  if(s.sessionType!=="GVT" && i===0) {
+    s.sets.forEach((set,idx)=>{ if(idx>0) set.reps=val; });
+    saveDB(); render();
+  }
+}
+
+function updateIso(lift,i,field,val) {
+  findSession(db.currentWeek,lift).isolations[i][field]=val;
+  saveDB();
+}
+
+function completeSession(lift) {
+  findSession(db.currentWeek,lift).completed=true;
+  saveDB(); render();
+}
+
+function changeWeek(d) {
+  db.currentWeek=Math.min(12,Math.max(1,db.currentWeek+d));
+  saveDB(); render();
+}
+
+function resetData() {
+  if(confirm("Delete all data?")) {
+    localStorage.removeItem("trainingDB");
     location.reload();
   }
 }
 
 /* ---------------- CHART ---------------- */
-let chart;
-function drawChart(){
-  const ctx=document.getElementById('chart');
-  if(chart) chart.destroy();
 
+function renderChart() {
+  const ctx=document.getElementById("rmChart");
   const data=lifts.map(l=>{
-    return db.history.filter(h=>h.lift===l).map(h=>h.oneRM);
+    return db.sessions
+      .filter(s=>s.lift===l)
+      .map(s=>best1RM(s));
   });
-
-  chart=new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:data[0].map((_,i)=>i+1),
-      datasets:lifts.map((l,i)=>({
-        label:l,data:data[i],borderWidth:2
-      }))
+  if(window.rmChart) window.rmChart.destroy();
+  window.rmChart=new Chart(ctx,{
+    type:"line",
+    data:{ labels:data[0].map((_,i)=>i+1),
+      datasets:data.map((d,i)=>({label:lifts[i],data:d}))
     }
   });
-
-  document.getElementById('maxBox').textContent =
-    'Highest 1RM achieved: '+
-    Math.max(...db.history.map(h=>h.oneRM||0),0);
 }
-
-/* ---------------- DROPDOWNS ---------------- */
-cycle.onchange = weekType.onchange = ()=>{
-  lifts.forEach(l=>{
-    const s=getSession(l);
-    if(!s.completed){
-      s.cycle=cycle.value;
-      s.weekType=weekType.value;
-      s.sets=[];
-    }
-  });
-  render();
-};
 
 render();
 </script>

@@ -82,7 +82,14 @@ function save(){ localStorage.setItem('db',JSON.stringify(db)); }
 
 /* ---------------- HELPERS ---------------- */
 function calc1RM(w,r){ return r>0 ? Math.round(w*(1+r/30)) : 0; }
-function peak1RM(sets){ return sets.length ? Math.max(...sets.map(s=>calc1RM(s.w,s.r))) : 0; }
+function peak1RM(sets){
+  if(!sets.length) return 0;
+  return Math.max(...sets.map(s=>calc1RM(s.w,s.r)));
+}
+function avg1RM(sets,peak){
+  if(!sets.length) return 0;
+  return peak ? peak1RM(sets) : Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);
+}
 
 function prevEquivalent(lift,type,cycle){
   const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type&&x.cycle===cycle);
@@ -93,16 +100,13 @@ function prevIsolation(lift){
   return db.isolations[lift].find(s=>s.week===currentWeek-1) || null;
 }
 
-function weightClass(curr, prev, lift, weekType){
+function weightClass(curr, prev, lift){
   if(!curr) return '';
   const c = Number(curr), p = Number(prev);
-  // Only apply PB or progress for Mini-Peak/Peak
-  if(weekType==='Mini-Peak' || weekType==='Peak'){
-    if(!db.pbs[lift] || c>db.pbs[lift]) return 'weight-pb';
-    if(p!==undefined && !isNaN(c) && !isNaN(p)){
-      if(c>p) return 'weight-up';
-      if(c<p) return 'weight-down';
-    }
+  if(prev!==undefined && !isNaN(c) && !isNaN(p)){
+    if(!db.pbs[lift] || c>=db.pbs[lift]) return 'weight-pb';
+    if(c>p) return 'weight-up';
+    if(c<p) return 'weight-down';
   }
   return '';
 }
@@ -130,30 +134,30 @@ function render(){
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
     const prevIso=prevIsolation(lift);
 
+    // MAIN SETS
     ses.sets = Array.from({length:setCount},(_,i)=>{
       const prevW = ses.sets[i]?.w || '';
       const prevR = ses.sets[i]?.r || (fixedReps||'');
       return {w:prevW,r:prevR};
     });
 
-    // Isolation carry-over
+    // ISOLATIONS
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
       if(prevIso){
-        Object.assign(ses.isolations[i],prevIso.isolations[i]?.[i] || prevIso.isolations[i] || {});
+        Object.assign(ses.isolations[i],prevIso.isolations[i]||{});
       }
     }
 
     const card=document.createElement('div');
     card.className='card session'+(ses.completed?' locked':'');
-    // PB badge in header for Mini-Peak/Peak
     const peakMax = peak1RM(ses.sets);
-    const showPB = (ses.weekType==='Mini-Peak'||ses.weekType==='Peak') && peakMax > (db.pbs[lift]||0);
-    if(showPB) db.pbs[lift]=peakMax;
+    const prevPB = db.pbs[lift] || 0;
+    const showPB = (ses.weekType==='Mini-Peak'||ses.weekType==='Peak') && peakMax > prevPB;
 
     card.innerHTML=`<h3>${lift}${showPB?'<span class="pb-badge">PB!</span>':''}</h3>`;
-
     const row=document.createElement('div'); row.className='row';
+
     const prev=document.createElement('div'); prev.className='prev';
     prev.innerHTML='<strong>Previous</strong><br>';
     if(prevMain){
@@ -167,11 +171,12 @@ function render(){
     }
 
     const curr=document.createElement('div'); curr.className='curr';
+
     ses.sets.forEach((s,i)=>{
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" class="${weightClass(s.w, prevMain?.sets[i]?.w,lift,ses.weekType)}" ${ses.completed?'disabled':''}
+        <input type="number" value="${s.w}" class="${weightClass(s.w, prevMain?.sets[i]?.w,lift)}" ${ses.completed?'disabled':''}
           oninput="setMain('${lift}',${i},'w',this.value)">
         <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''}
           oninput="setMain('${lift}',${i},'r',this.value)">
@@ -193,7 +198,7 @@ function render(){
             <input type="number" value="${iso.reps||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'reps',this.value)">
           </div>
           <div><label class="small">Weight</label>
-            <input type="number" value="${iso.weight||''}" class="${weightClass(iso.weight,prevIso?.isolations[i]?.weight,lift,ses.weekType)}" ${ses.completed?'disabled':''}
+            <input type="number" value="${iso.weight||''}" class="${weightClass(iso.weight,prevIso?.isolations[i]?.weight,lift)}" ${ses.completed?'disabled':''}
               oninput="setIso('${lift}',${i},'weight',this.value)">
           </div>
         </div>
@@ -227,7 +232,8 @@ function complete(lift){
   const s=db.lifts[lift].find(x=>x.week===currentWeek);
   s.completed=true;
   const peakMax = peak1RM(s.sets);
-  if(!db.pbs[lift] || peakMax>db.pbs[lift]) db.pbs[lift]=peakMax;
+  if(!db.pbs[lift] || peakMax > db.pbs[lift]) db.pbs[lift] = peakMax;
+
   db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
   db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
   save(); render();
@@ -288,7 +294,7 @@ function drawChart(){
         fill:false
       }))
     },
-    options:{responsive:true,plugins:{legend:{position:'top'},title:{display:true,text:'Weekly Main Lift 1RM'}}}
+    options:{responsive:true,plugins:{legend:{position:'top'}}}
   });
 }
 

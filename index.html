@@ -23,7 +23,7 @@ button{cursor:pointer;}
 .small{font-size:12px;color:#555;}
 textarea{resize:none;width:100%;}
 .locked{opacity:.6;}
-.pb-circle{background:#fde68a;border-radius:50%;width:12px;height:12px;display:inline-block;margin-left:4px;}
+.pb-badge{background:#fde68a;padding:2px 6px;border-radius:4px;margin-left:4px;font-size:12px;}
 </style>
 </head>
 <body>
@@ -57,37 +57,37 @@ textarea{resize:none;width:100%;}
 </div>
 
 <script>
-let db=JSON.parse(localStorage.getItem('db'))||{lifts:{Squat:[],Bench:[],Deadlift:[]},isolations:{Squat:[],Bench:[],Deadlift:[]},history:[],pbs:{}};
-const MAX_WEEKS=24;
-let currentWeek=1;
-const typeSel=document.getElementById('weekType');
+/* ---------------- DATABASE ---------------- */
+let db = JSON.parse(localStorage.getItem('db')) || {
+  lifts:{Squat:[],Bench:[],Deadlift:[]},
+  isolations:{Squat:[],Bench:[],Deadlift:[]},
+  history:[],
+  pbs:{}
+};
 
-function save(){localStorage.setItem('db',JSON.stringify(db));}
-function calc1RM(w,r){return r>0?Math.round(w*(1+r/30)):0;}
-function avg1RM(sets,peak){if(!sets.length)return 0;return peak?Math.max(...sets.map(s=>calc1RM(s.w,s.r))):Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);}
-function prevEquivalent(lift,type){const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type);return s.length?s[s.length-1]:null;}
-function prevIsolation(lift){return db.isolations[lift].find(s=>s.week===currentWeek-1)||null;}
+const MAX_WEEKS = 24;
+let currentWeek = 1;
+const typeSel  = document.getElementById('weekType');
 
-function renderWeekButtons(){
-  const g=document.getElementById('weekGrid');g.innerHTML='';
-  for(let i=1;i<=MAX_WEEKS;i++){
-    const b=document.createElement('button');
-    const names=[];
-    ['Squat','Bench','Deadlift'].forEach(l=>{
-      const s=db.lifts[l].find(x=>x.week===i&&x.completed);
-      if(s&& !names.includes(s.weekType)) names.push(s.weekType);
-    });
-    b.textContent=names.length?`W${i} – ${names.join(', ')}`:`W${i}`;
-    b.className='week-btn '+(i===currentWeek?'active':'inactive');
-    b.onclick=()=>{currentWeek=i; render();};
-    g.append(b);
-  }
+function save(){ localStorage.setItem('db',JSON.stringify(db)); }
+
+/* ---------------- HELPERS ---------------- */
+function calc1RM(w,r){ return r>0 ? Math.round(w*(1+r/30)) : 0; }
+function max1RM(sets){ return sets.length ? Math.max(...sets.map(s=>calc1RM(s.w,s.r))) : 0; }
+function prevEquivalent(lift,type){
+  const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type);
+  return s.length ? s[s.length-1] : null;
+}
+function prevIsolation(lift){
+  return db.isolations[lift].find(s=>s.week===currentWeek-1) || null;
 }
 
+/* ---------------- RENDER ---------------- */
 function render(){
   const container=document.getElementById('sessions');
   container.innerHTML='';
-  document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
+
+  document.getElementById('weekTitle').textContent = `Week ${currentWeek}`;
   renderWeekButtons();
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
@@ -97,26 +97,23 @@ function render(){
       db.lifts[lift].push(ses);
     }
 
-    const gvt=ses.weekType==='GVT';
-    const setCount=gvt?10:5;
-    const fixedReps=gvt?10:null;
+    const gvt = ses.weekType==='GVT';
+    const setCount = gvt ? 10 : 5;
 
-    // --- Main sets
-    ses.sets=Array.from({length:setCount},(_,i)=>{
-      const prevW=ses.sets[i]?.w||'';
-      const prevR=ses.sets[i]?.r||(fixedReps||'');
-      return {w:prevW,r:prevR};
+    // Main sets
+    ses.sets = Array.from({length:setCount},(_,i)=>{
+      const prevW = ses.sets[i]?.w || '';
+      const prevR = ses.sets[i]?.r || '';
+      return {w: prevW, r: prevR};
     });
 
-    // --- Isolation sets: carryover
+    // Isolation carryover
+    const prevIso = prevIsolation(lift);
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
-    }
-    const prevIso=prevIsolation(lift);
-    if(prevIso){
-      ses.isolations.forEach((iso,i)=>{
-        Object.assign(iso,prevIso.isolations[i]||{});
-      });
+      if(prevIso){
+        Object.assign(ses.isolations[i],prevIso.isolations[i]||{});
+      }
     }
 
     const card=document.createElement('div');
@@ -124,12 +121,11 @@ function render(){
     card.innerHTML=`<h3>${lift}${ses.completed?'<span class="pb-badge">Completed</span>':''}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
-    // --- Previous session box
     const prev=document.createElement('div'); prev.className='prev';
     prev.innerHTML='<strong>Previous</strong><br>';
     const prevMain=prevEquivalent(lift,ses.weekType);
     if(prevMain){
-      prev.innerHTML+=`1RM: ${avg1RM(prevMain.sets,ses.weekType==='Peak')}<br>`;
+      prev.innerHTML+=`1RM: ${max1RM(prevMain.sets)}<br>`;
       prevMain.sets.forEach(s=>prev.innerHTML+=`${s.w}×${s.r}<br>`);
     } else prev.innerHTML+='—<br>';
     if(prevIso){
@@ -138,15 +134,16 @@ function render(){
       });
     }
 
-    // --- Current session box
     const curr=document.createElement('div'); curr.className='curr';
 
     ses.sets.forEach((s,i)=>{
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} onblur="autoCopyCurrent('${lift}',${i},'w',this.value)">
-        <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''} onblur="autoCopyCurrent('${lift}',${i},'r',this.value)">
+        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} 
+          onblur="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" value="${s.r}" ${ses.completed?'disabled':''} 
+          onblur="setMain('${lift}',${i},'r',this.value)">
       </div>`;
     });
 
@@ -156,27 +153,27 @@ function render(){
       <div class="iso">
         <div class="small"><strong>Isolation ${i+1}</strong></div>
         <label class="small">Exercise</label>
-        <input value="${iso.name||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'name',this.value)">
+        <input value="${iso.name||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'name',this.value)">
         <div class="row">
           <div><label class="small">Sets</label>
-            <input type="number" value="${iso.sets||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'sets',this.value)">
+            <input type="number" value="${iso.sets||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'sets',this.value)">
           </div>
           <div><label class="small">Reps</label>
-            <input type="number" value="${iso.reps||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'reps',this.value)">
+            <input type="number" value="${iso.reps||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'reps',this.value)">
           </div>
           <div><label class="small">Weight</label>
-            <input type="number" value="${iso.weight||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'weight',this.value)">
+            <input type="number" value="${iso.weight||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'weight',this.value)">
           </div>
         </div>
       </div>`;
     });
 
     curr.innerHTML+=`
-      <textarea maxlength="260" ${ses.completed?'readonly':''} oninput="setNotes('${lift}',this.value)">${ses.notes}</textarea>
+      <textarea maxlength="260" ${ses.completed?'readonly':''} onblur="setNotes('${lift}',this.value)">${ses.notes}</textarea>
       <button ${ses.completed?'disabled':''} onclick="complete('${lift}')">
         ${ses.completed?'Completed':'Complete Session'}
       </button>
-      ${ses.completed?`<button onclick="unlock('${lift}')">Unlock Session</button>`:''}
+      ${ses.completed ? `<button onclick="unlock('${lift}')">Unlock Session</button>` : ''}
     `;
 
     row.append(prev,curr);
@@ -188,25 +185,70 @@ function render(){
   save();
 }
 
-// --- Auto-copy only within current week session on blur/tab/enter
-function autoCopyCurrent(lift,i,field,value){
-  const ses=db.lifts[lift].find(s=>s.week===currentWeek);
-  ses.sets[i][field]=value;
-  for(let j=i+1;j<ses.sets.length;j++){
-    if(!ses.sets[j][field]) ses.sets[j][field]=value;
-  }
-  save();
-  render();
+/* ---------------- SETTERS ---------------- */
+function setMain(l,i,f,v){ 
+  db.lifts[l].find(s=>s.week===currentWeek).sets[i][f]=v; save(); 
+}
+function setIso(l,i,f,v){ 
+  db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save(); 
+}
+function setNotes(l,v){ 
+  db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(); 
 }
 
-function setIso(l,i,f,v){db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save();}
-function setNotes(l,v){db.lifts[l].find(s=>s.week===currentWeek).notes=v; save();}
-function complete(l){const s=db.lifts[l].find(x=>x.week===currentWeek);s.completed=true;db.isolations[l]=db.isolations[l].filter(x=>x.week!==currentWeek);db.isolations[l].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});save();render();}
-function unlock(l){const s=db.lifts[l].find(x=>x.week===currentWeek);if(s){s.completed=false;render();}}
-function changeWeek(d){currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d));render();}
-function resetAll(){if(confirm('Delete all data?')){db={lifts:{Squat:[],Bench:[],Deadlift:[]},isolations:{Squat:[],Bench:[],Deadlift:[]},history:[],pbs:{}};currentWeek=1;save();render();}}
+/* ---------------- COMPLETE ---------------- */
+function complete(lift){
+  const s=db.lifts[lift].find(x=>x.week===currentWeek);
+  s.completed=true;
+  const max=max1RM(s.sets);
+  if((s.weekType==='Mini-Peak' || s.weekType==='Peak')){
+    db.pbs[lift] = (!db.pbs[lift]||max>db.pbs[lift])? max : db.pbs[lift];
+  }
+  db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
+  db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
+  save(); render();
+}
 
-// --- Chart
+/* ---------------- UNLOCK ---------------- */
+function unlock(lift){
+  const s = db.lifts[lift].find(x => x.week === currentWeek);
+  if(s){
+    s.completed = false;
+    render();
+  }
+}
+
+/* ---------------- NAVIGATION ---------------- */
+function changeWeek(d){ 
+  currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); 
+  render(); 
+}
+
+function resetAll(){
+  if(confirm('Delete all data?')){
+    db={lifts:{Squat:[],Bench:[],Deadlift:[]},isolations:{Squat:[],Bench:[],Deadlift:[]},history:[],pbs:{}};
+    currentWeek=1; save(); render();
+  }
+}
+
+/* ---------------- WEEK BUTTONS ---------------- */
+function renderWeekButtons(){
+  const g=document.getElementById('weekGrid'); g.innerHTML='';
+  for(let i=1;i<=MAX_WEEKS;i++){
+    const b=document.createElement('button');
+    const names=[];
+    ['Squat','Bench','Deadlift'].forEach(l=>{
+      const s=db.lifts[l].find(x=>x.week===i && x.completed);
+      if(s && !names.includes(s.weekType)) names.push(s.weekType);
+    });
+    b.textContent=names.length?`W${i} – ${names.join(', ')}`:`W${i}`;
+    b.className='week-btn '+(i===currentWeek?'active':'inactive');
+    b.onclick=()=>{currentWeek=i; render();};
+    g.append(b);
+  }
+}
+
+/* ---------------- CHART ---------------- */
 let chart;
 function drawChart(){
   const ctx=document.getElementById('rmChart');
@@ -219,26 +261,46 @@ function drawChart(){
         label:l,
         data:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
-          if(!s) return null;
-          return Math.max(...s.sets.map(set=>Number(set.w)||0));
+          return s ? max1RM(s.sets) : null;
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
+        fill:false,
         pointRadius:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
-          if(!s) return 3;
-          const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
-          if((s.weekType==='Mini-Peak'||s.weekType==='Peak') && (!db.pbs[l]||maxW>=db.pbs[l])) return 9;
+          if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
+            const max=max1RM(s.sets);
+            if(db.pbs[l]===max) return 9; // 3x normal size
+          }
           return 3;
         }),
-        fill:false
+        pointBackgroundColor:Array.from({length:MAX_WEEKS},(_,i)=>{
+          const s=db.lifts[l].find(x=>x.week===i+1);
+          if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
+            const max=max1RM(s.sets);
+            if(db.pbs[l]===max) return '#fde68a';
+          }
+          return '#3b82f6';
+        })
       }))
     },
     options:{responsive:true,plugins:{legend:{position:'top'}}}
   });
 }
 
-// --- Drop-down handler
-typeSel.onchange=()=>{['Squat','Bench','Deadlift'].forEach(lift=>{const ses=db.lifts[lift].find(s=>s.week===currentWeek);if(ses){ses.weekType=typeSel.value;render();}});};
+/* ---------------- DROP DOWN HANDLER ---------------- */
+typeSel.onchange = () => {
+  ['Squat','Bench','Deadlift'].forEach(lift=>{
+    const ses=db.lifts[lift].find(s=>s.week===currentWeek);
+    if(ses){
+      ses.weekType = typeSel.value;
+      const gvt = ses.weekType==='GVT';
+      const setCount = gvt ? 10 : 5;
+      ses.sets = Array.from({length:setCount},(_,i)=>({w:'',r:''}));
+      ses.completed=false;
+    }
+  });
+  render();
+};
 
 render();
 </script>

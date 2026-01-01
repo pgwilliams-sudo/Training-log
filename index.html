@@ -62,7 +62,6 @@ textarea{resize:none;width:100%;}
 </div>
 
 <script>
-/* ---------------- DATABASE ---------------- */
 let db = JSON.parse(localStorage.getItem('db')) || {
   lifts:{Squat:[],Bench:[],Deadlift:[]},
   isolations:{Squat:[],Bench:[],Deadlift:[]},
@@ -77,16 +76,16 @@ const typeSel  = document.getElementById('weekType');
 
 function save(){ localStorage.setItem('db',JSON.stringify(db)); }
 
-/* ---------------- HELPERS ---------------- */
 function calc1RM(w,r){ return r>0 ? Math.round(w*(1+r/30)) : 0; }
-
-function max1RM(sets){
+function avg1RM(sets,peak){
   if(!sets.length) return 0;
-  return Math.max(...sets.map(s=>calc1RM(s.w,s.r)));
+  return peak
+    ? Math.max(...sets.map(s=>calc1RM(s.w,s.r)))
+    : Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);
 }
 
 function prevEquivalent(lift,type,cycle){
-  const s=db.lifts[lift].filter(x=>x.completed && x.weekType===type && x.cycle===cycle);
+  const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type&&x.cycle===cycle);
   return s.length ? s[s.length-1] : null;
 }
 
@@ -94,13 +93,21 @@ function prevIsolation(lift){
   return db.isolations[lift].find(s=>s.week===currentWeek-1) || null;
 }
 
-/* ---------------- RENDER ---------------- */
+function weightClass(curr, prev, lift){
+  if(!curr) return '';
+  const c = Number(curr), p = Number(prev);
+  if(prev!==undefined && !isNaN(c) && !isNaN(p)){
+    if(!db.pbs[lift] || c>=db.pbs[lift]) return 'weight-pb';
+    if(c>p) return 'weight-up';
+    if(c<p) return 'weight-down';
+  }
+  return '';
+}
+
 function render(){
   const container=document.getElementById('sessions');
   container.innerHTML='';
-
   document.getElementById('weekTitle').textContent = `Week ${currentWeek}`;
-
   renderWeekButtons();
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
@@ -114,10 +121,12 @@ function render(){
     const setCount=gvt?10:5;
     const fixedReps=gvt?(ses.cycle==='Strength'?5:10):null;
 
+    // Previous session for main lift
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
+    // Previous isolation for this lift
     const prevIso=prevIsolation(lift);
 
-    // Initialize sets without overwriting existing values
+    // Main sets auto-populate
     ses.sets = Array.from({length:setCount},(_,i)=>{
       const prevW = ses.sets[i]?.w || '';
       const prevR = ses.sets[i]?.r || (fixedReps||'');
@@ -128,7 +137,9 @@ function render(){
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
       if(prevIso){
-        Object.assign(ses.isolations[i],prevIso.isolations[i]?.[i] || {});
+        for (let key of ['name','sets','reps','weight']) {
+          if(!ses.isolations[i][key]) ses.isolations[i][key] = prevIso.isolations[i]?.[key] || '';
+        }
       }
     }
 
@@ -137,10 +148,11 @@ function render(){
     card.innerHTML=`<h3>${lift}${ses.completed?'<span class="pb-badge">Completed</span>':''}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
+    // Previous stats box
     const prev=document.createElement('div'); prev.className='prev';
     prev.innerHTML='<strong>Previous</strong><br>';
     if(prevMain){
-      prev.innerHTML+=`1RM: ${max1RM(prevMain.sets)}<br>`;
+      prev.innerHTML+=`1RM: ${avg1RM(prevMain.sets,ses.weekType==='Peak')}<br>`;
       prevMain.sets.forEach(s=>prev.innerHTML+=`${s.w}×${s.r}<br>`);
     } else prev.innerHTML+='—<br>';
     if(prevIso){
@@ -156,9 +168,9 @@ function render(){
       <div class="set">
         ${i+1}
         <input type="number" value="${s.w}" ${ses.completed?'disabled':''}
-          onblur="autoCopyMain('${lift}',${i},'w',this)">
+          onblur="setMain('${lift}',${i},'w',this.value)">
         <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''}
-          onblur="autoCopyMain('${lift}',${i},'r',this)">
+          onblur="setMain('${lift}',${i},'r',this.value)">
       </div>`;
     });
 
@@ -200,20 +212,8 @@ function render(){
   save();
 }
 
-/* ---------------- AUTO COPY ---------------- */
-function autoCopyMain(lift,i,field,input){
-  const ses=db.lifts[lift].find(s=>s.week===currentWeek);
-  ses.sets[i][field]=input.value;
-  // Only copy empty rows
-  for(let j=i+1;j<ses.sets.length;j++){
-    if(!ses.sets[j][field]){
-      ses.sets[j][field]=input.value;
-    }
-  }
-  save(); render();
-}
-
 /* ---------------- SETTERS ---------------- */
+function setMain(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).sets[i][f]=v; save(); }
 function setIso(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save(); }
 function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(); }
 
@@ -221,15 +221,11 @@ function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(
 function complete(lift){
   const s=db.lifts[lift].find(x=>x.week===currentWeek);
   s.completed=true;
-  const peak=(s.weekType==='Peak'||s.weekType==='Mini-Peak');
-  const max=max1RM(s.sets);
-  db.history.push({lift,max});
-  if(!db.pbs[lift] || max>db.pbs[lift]) db.pbs[lift]=max;
-
-  // Save isolation carryover
+  const max1RM=avg1RM(s.sets,s.weekType==='Peak');
+  db.history.push({lift,max1RM});
+  if(!db.pbs[lift] || max1RM>db.pbs[lift]) db.pbs[lift]=max1RM;
   db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
   db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
-
   save(); render();
 }
 
@@ -279,41 +275,31 @@ function drawChart(){
     data:{
       labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
       datasets:['Squat','Bench','Deadlift'].map(l=>{
-        const dataPoints=Array.from({length:MAX_WEEKS},(_,i)=>{
-          const s=db.lifts[l].find(x=>x.week===i+1);
-          return s?max1RM(s.sets):null;
-        });
-        // PB highlight points only for peak/mini-peak
-        const pointBg=dataPoints.map((v,idx)=>{
-          const s=db.lifts[l].find(x=>x.week===idx+1);
-          if(!s) return null;
-          if((s.weekType==='Peak'||s.weekType==='Mini-Peak') && db.pbs[l]===max1RM(s.sets)) return 'gold';
-          return null;
-        });
-        const pointRadius=dataPoints.map((v,idx)=>{
-          const s=db.lifts[l].find(x=>x.week===idx+1);
-          if(!s) return 3;
-          if((s.weekType==='Peak'||s.weekType==='Mini-Peak') && db.pbs[l]===max1RM(s.sets)) return 9;
-          return 3;
-        });
         return {
           label:l,
-          data:dataPoints,
+          data:Array.from({length:MAX_WEEKS},(_,i)=>{
+            const s=db.lifts[l].find(x=>x.week===i+1);
+            if(!s) return null;
+            return avg1RM(s.sets,s.weekType==='Peak');
+          }),
           borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
           fill:false,
-          pointBackgroundColor:pointBg,
-          pointRadius:pointRadius
+          pointRadius:Array.from({length:MAX_WEEKS},(_,i)=>{
+            const s=db.lifts[l].find(x=>x.week===i+1);
+            if(!s) return 3;
+            if((s.weekType==='Mini-Peak'||s.weekType==='Peak') && Math.max(...s.sets.map(x=>Number(x.w)||0))>=db.pbs[l]) return 9;
+            return 3;
+          }),
+          pointBackgroundColor:Array.from({length:MAX_WEEKS},(_,i)=>{
+            const s=db.lifts[l].find(x=>x.week===i+1);
+            if(!s) return '#000';
+            if((s.weekType==='Mini-Peak'||s.weekType==='Peak') && Math.max(...s.sets.map(x=>Number(x.w)||0))>=db.pbs[l]) return '#fde68a';
+            return '#000';
+          })
         };
       })
     },
-    options:{
-      responsive:true,
-      plugins:{
-        legend:{position:'top'},
-        title:{display:true,text:'Weekly 1RM Progress'},
-      },
-      scales:{y:{beginAtZero:true}}
-    }
+    options:{responsive:true,plugins:{legend:{position:'top'},title:{display:true,text:'Weekly 1RM Progress'}}}
   });
 }
 
@@ -326,7 +312,7 @@ typeSel.onchange = () => {
       const gvt=ses.weekType==='GVT';
       const setCount=gvt?10:5;
       const fixedReps=gvt?(cycleSel.value==='Strength'?5:10):null;
-      ses.sets = Array.from({length:setCount},(_,i)=>({w:ses.sets[i]?.w||'',r:fixedReps||''}));
+      ses.sets = Array.from({length:setCount},(_,i)=>({w:'',r:fixedReps||''}));
       ses.completed=false;
     }
   });

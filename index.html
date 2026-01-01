@@ -1,223 +1,241 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Training Log PWA</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Logger</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #f4f4f4;
-  margin: 0;
-  padding: 16px;
-}
-h1, h2, h3 { margin: 6px 0; }
-.card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
-  box-shadow: 0 2px 4px rgba(0,0,0,.1);
-}
-select, input, button, textarea {
-  padding: 6px;
-  margin: 4px;
-}
-button {
-  cursor: pointer;
-}
-.locked {
-  opacity: 0.6;
-  pointer-events: none;
-}
-.set-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.prev-box {
-  background: #eef6ff;
-  padding: 8px;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-.pb { background: gold; padding: 2px 6px; border-radius: 4px; }
-.up { background: #dcfce7; }
-.down { background: #fee2e2; }
-.iso-box {
-  background: #f9fafb;
-  padding: 8px;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  font-size: 12px;
-}
-textarea { width: 100%; max-length: 260; }
-.week-btn { margin: 2px; }
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;background:#f5f5f5;padding:15px;}
+.card{background:#fff;border-radius:8px;padding:15px;margin-bottom:15px;box-shadow:0 2px 4px rgba(0,0,0,.1);}
+.row{display:flex;gap:10px;flex-wrap:wrap;}
+.week-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:10px;}
+.week-btn{padding:8px;border:none;border-radius:6px;cursor:pointer;}
+.week-btn.active{background:#3b82f6;color:#fff;}
+.week-btn.inactive{background:#e5e7eb;}
+select,input,textarea,button{padding:8px;border-radius:6px;border:1px solid #ccc;}
+.session{border-top:1px solid #eee;padding-top:10px;margin-top:10px;}
+.prev{background:#f9fafb;border:1px dashed #bbb;padding:10px;border-radius:6px;flex:1;}
+.curr{flex:1;}
+.set{display:flex;gap:6px;margin-bottom:6px;align-items:center;}
+.iso{background:#fafafa;padding:8px;border-radius:6px;margin-bottom:6px;}
+.small{font-size:12px;color:#555;}
+textarea{resize:none;width:100%;}
+.locked{opacity:.6;}
+.weight-up{background:#dcfce7;}
+.weight-down{background:#fee2e2;}
+.weight-pb{background:#fde68a;}
+.pb-badge{background:#fde68a;padding:2px 6px;border-radius:4px;margin-left:6px;font-size:12px;}
 </style>
 </head>
 
 <body>
 
-<h1>Training Log</h1>
-
 <div class="card">
-  <strong>Weeks</strong><br/>
-  <div id="weekButtons"></div>
-</div>
+  <h2>Training Logger</h2>
+  <div class="row">
+    <button onclick="changeWeek(-1)">◀</button>
+    <strong id="weekTitle">Week 1</strong>
+    <button onclick="changeWeek(1)">▶</button>
 
-<div class="card">
-  Cycle:
-  <select id="cycleSelect">
-    <option value="Hybrid">Hybrid</option>
-    <option value="Strength">Strength</option>
-  </select>
+    <select id="cycle">
+      <option>Strength</option>
+      <option>Hybrid</option>
+    </select>
 
-  Session Type:
-  <select id="sessionTypeSelect">
-    <option>GVT</option>
-    <option>Core</option>
-    <option>Breakdown Banded</option>
-    <option>Breakdown Pause</option>
-    <option>Breakdown Other</option>
-    <option>Mini-Peak</option>
-    <option>Peak</option>
-  </select>
+    <select id="weekType">
+      <option>GVT</option>
+      <option>Core Session</option>
+      <option>Breakdown Banded</option>
+      <option>Breakdown Pause</option>
+      <option>Breakdown Other</option>
+      <option>Mini-Peak</option>
+      <option>Peak</option>
+    </select>
+
+    <button onclick="resetAll()" style="background:#ef4444;color:#fff">Reset</button>
+  </div>
+
+  <div id="weekGrid" class="week-grid"></div>
 </div>
 
 <div id="sessions"></div>
 
-<button onclick="softReset()">Reset Current Cycle</button>
+<div class="card">
+  <h3>Weekly 1RM Progress</h3>
+  <canvas id="rmChart"></canvas>
+</div>
 
 <script>
-/* ---------------- STORAGE ---------------- */
-const DB_KEY = "trainingDB_v2";
-let db = JSON.parse(localStorage.getItem(DB_KEY)) || { sessions: [], isolations: {} };
-let currentWeek = 1;
+/* ---------- DATABASE ---------- */
+let db = JSON.parse(localStorage.getItem('db')) || {
+  lifts:{Squat:[],Bench:[],Deadlift:[]},
+  isolations:{Squat:[],Bench:[],Deadlift:[]},
+  pbs:{}
+};
 
-/* ---------------- HELPERS ---------------- */
-function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
-function setsFor(type){ return type==="GVT" ? 10 : 5; }
-function liftList(){ return ["Squat","Bench","Deadlift"]; }
+const MAX_WEEKS=24;
+let currentWeek=1;
 
-/* ---------------- WEEK BUTTONS ---------------- */
-function renderWeeks(){
-  let html="";
-  for(let i=1;i<=12;i++){
-    html+=`<button class="week-btn" onclick="goWeek(${i})">Week ${i}</button>`;
-  }
-  document.getElementById("weekButtons").innerHTML=html;
-}
-function goWeek(w){ currentWeek=w; render(); }
+const cycleSel=document.getElementById('cycle');
+const typeSel=document.getElementById('weekType');
 
-/* ---------------- SESSION LOOKUPS ---------------- */
-function findPrevSession(lift,type){
-  return [...db.sessions]
-    .filter(s=>s.lift===lift && s.type===type)
-    .sort((a,b)=>b.time-a.time)[0];
+function save(){localStorage.setItem('db',JSON.stringify(db));}
+
+/* ---------- HELPERS ---------- */
+function calc1RM(w,r){return r>0?Math.round(w*(1+r/30)):0;}
+
+function session1RM(sets,peak){
+  if(!sets.length) return 0;
+  if(peak) return Math.max(...sets.map(s=>calc1RM(s.w,s.r)));
+  const maxSet=sets.reduce((a,b)=>Number(b.w)>Number(a.w)?b:a,sets[0]);
+  return calc1RM(maxSet.w,maxSet.r);
 }
 
-/* ---------------- RENDER ---------------- */
+function prevEquivalent(lift,type,cycle){
+  const s=db.lifts[lift].filter(x=>
+    x.completed &&
+    x.weekType===type &&
+    x.cycle===cycle &&
+    x.week<currentWeek
+  );
+  return s.length?s[s.length-1]:null;
+}
+
+function weightClass(curr,prev,lift){
+  if(!curr||!prev) return '';
+  curr=Number(curr); prev=Number(prev);
+  if(db.pbs[lift] && curr>=db.pbs[lift]) return 'weight-pb';
+  if(curr>prev) return 'weight-up';
+  if(curr<prev) return 'weight-down';
+  return '';
+}
+
+/* ---------- RENDER ---------- */
 function render(){
-  const cycle = cycleSelect.value;
-  const type = sessionTypeSelect.value;
-  let html="";
+  document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
+  renderWeekButtons();
 
-  liftList().forEach(lift=>{
-    const prev = findPrevSession(lift,type);
-    const locked = prev && prev.week===currentWeek;
+  const cont=document.getElementById('sessions');
+  cont.innerHTML='';
 
-    html+=`<div class="card ${locked?'locked':''}">
-      <h3>${lift}</h3>`;
+  ['Squat','Bench','Deadlift'].forEach(lift=>{
+    let s=db.lifts[lift].find(x=>x.week===currentWeek);
+    if(!s){
+      s={week:currentWeek,cycle:cycleSel.value,weekType:typeSel.value,sets:[],isolations:[{},{},{}],notes:'',completed:false};
+      db.lifts[lift].push(s);
+    }
 
+    const gvt=s.weekType==='GVT';
+    const setCount=gvt?10:5;
+    const fixed=gvt?(s.cycle==='Strength'?5:10):null;
+
+    if(s.sets.length!==setCount){
+      s.sets=Array.from({length:setCount},(_,i)=>({w:'',r:fixed||''}));
+    }
+
+    const prev=prevEquivalent(lift,s.weekType,s.cycle);
+
+    const card=document.createElement('div');
+    card.className='card session'+(s.completed?' locked':'');
+    const curr1RM=session1RM(s.sets,s.weekType==='Peak');
+    const isPB=!db.pbs[lift]||curr1RM>=db.pbs[lift];
+
+    card.innerHTML=`<h3>${lift}${isPB&&s.completed?'<span class="pb-badge">PB</span>':''}</h3>`;
+    const row=document.createElement('div'); row.className='row';
+
+    const prevBox=document.createElement('div'); prevBox.className='prev';
+    prevBox.innerHTML='<strong>Previous</strong><br>';
     if(prev){
-      html+=`<div class="prev-box">
-        Prev: ${prev.sets.map(s=>`${s.w}×${s.r}`).join(", ")}
-      </div>`;
-    }
+      prevBox.innerHTML+=`1RM: ${session1RM(prev.sets,prev.weekType==='Peak')}<br>`;
+      prev.sets.forEach(x=>prevBox.innerHTML+=`${x.w}×${x.r}<br>`);
+    } else prevBox.innerHTML+='—';
 
-    for(let i=0;i<setsFor(type);i++){
-      html+=`<div class="set-row">
-        <input type="number" placeholder="Wt" 
-          onblur="autoCopyWeight(event,'${lift}',${i})">
-        <input type="number" placeholder="Reps"
-          onblur="autoCopyReps(event,'${lift}',${i})">
+    const curr=document.createElement('div'); curr.className='curr';
+    s.sets.forEach((set,i)=>{
+      curr.innerHTML+=`
+      <div class="set">
+        ${i+1}
+        <input type="number" value="${set.w}" class="${weightClass(set.w,prev?.sets[i]?.w,lift)}" ${s.completed?'disabled':''}
+          oninput="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" value="${set.r}" ${fixed?'disabled':''} ${s.completed?'disabled':''}
+          oninput="setMain('${lift}',${i},'r',this.value)">
       </div>`;
-    }
+    });
 
-    html+=`<h4>Isolations</h4>`;
-    for(let i=0;i<3;i++){
-      html+=`<div class="set-row">
-        <input placeholder="Name">
-        <input type="number" placeholder="Sets">
-        <input type="number" placeholder="Reps">
-        <input type="number" placeholder="Wt">
-      </div>`;
-    }
+    curr.innerHTML+=`
+      <textarea maxlength="260" ${s.completed?'readonly':''}
+        oninput="setNotes('${lift}',this.value)">${s.notes}</textarea>
+      <button ${s.completed?'disabled':''} onclick="complete('${lift}')">Complete Session</button>
+    `;
 
-    html+=`<textarea placeholder="Notes (260 chars)"></textarea>
-      <button onclick="completeSession('${lift}')">Complete Session</button>
-    </div>`;
+    row.append(prevBox,curr);
+    card.append(row);
+    cont.append(card);
   });
 
-  document.getElementById("sessions").innerHTML=html;
+  drawChart();
+  save();
 }
 
-/* ---------------- COMPLETE ---------------- */
-function completeSession(lift){
-  const card=[...document.querySelectorAll(".card")]
-    .find(c=>c.querySelector("h3")?.innerText===lift);
+/* ---------- SETTERS ---------- */
+function setMain(l,i,f,v){db.lifts[l].find(x=>x.week===currentWeek).sets[i][f]=v;save();}
+function setNotes(l,v){db.lifts[l].find(x=>x.week===currentWeek).notes=v;save();}
 
-  const rows=[...card.querySelectorAll(".set-row")].slice(0,setsFor(sessionTypeSelect.value));
-  const sets=rows.map(r=>({
-    w:r.children[0].value,
-    r:r.children[1].value
-  }));
-
-  db.sessions.push({
-    week:currentWeek,
-    lift,
-    type:sessionTypeSelect.value,
-    cycle:cycleSelect.value,
-    sets,
-    time:Date.now()
-  });
-
-  saveDB();
-  render();
+/* ---------- COMPLETE ---------- */
+function complete(lift){
+  const s=db.lifts[lift].find(x=>x.week===currentWeek);
+  s.completed=true;
+  const rm=session1RM(s.sets,s.weekType==='Peak');
+  if(!db.pbs[lift]||rm>db.pbs[lift]) db.pbs[lift]=rm;
+  save(); render();
 }
 
-/* ---------------- AUTOCOPY ---------------- */
-function autoCopyWeight(e,lift,idx){
-  if(idx!==0) return;
-  const val=e.target.value;
-  if(!val) return;
-  const rows=[...e.target.closest(".card").querySelectorAll(".set-row")];
-  rows.slice(1).forEach(r=>r.children[0].value=val);
-}
-function autoCopyReps(e,lift,idx){
-  if(idx!==0) return;
-  if(sessionTypeSelect.value==="GVT") return;
-  const val=e.target.value;
-  if(!val) return;
-  const rows=[...e.target.closest(".card").querySelectorAll(".set-row")];
-  rows.slice(1).forEach(r=>r.children[1].value=val);
-}
-
-/* ---------------- RESET ---------------- */
-function softReset(){
-  if(confirm("Reset current cycle? History is kept.")){
-    db.sessions=[];
-    saveDB();
-    render();
+/* ---------- WEEK BUTTONS ---------- */
+function renderWeekButtons(){
+  const g=document.getElementById('weekGrid'); g.innerHTML='';
+  for(let i=1;i<=MAX_WEEKS;i++){
+    const b=document.createElement('button');
+    const done=db.lifts.Squat.concat(db.lifts.Bench,db.lifts.Deadlift)
+      .find(x=>x.week===i&&x.completed);
+    b.textContent=done?`W${i} – ${done.weekType}`:`W${i}`;
+    b.className='week-btn '+(i===currentWeek?'active':'inactive');
+    b.onclick=()=>{currentWeek=i; render();};
+    g.append(b);
   }
 }
 
-/* ---------------- INIT ---------------- */
-renderWeeks();
+/* ---------- CHART ---------- */
+let chart;
+function drawChart(){
+  if(chart) chart.destroy();
+  chart=new Chart(document.getElementById('rmChart'),{
+    type:'line',
+    data:{
+      labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
+      datasets:['Squat','Bench','Deadlift'].map(l=>({
+        label:l,
+        data:Array.from({length:MAX_WEEKS},(_,i)=>{
+          const s=db.lifts[l].find(x=>x.week===i+1&&x.completed);
+          return s?session1RM(s.sets,s.weekType==='Peak'):null;
+        }),
+        borderWidth:2
+      }))
+    }
+  });
+}
+
+/* ---------- NAV ---------- */
+function changeWeek(d){currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d));render();}
+function resetAll(){
+  if(confirm('Delete all data?')){
+    localStorage.removeItem('db');
+    location.reload();
+  }
+}
+
 render();
 </script>
-
 </body>
 </html>

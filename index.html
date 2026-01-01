@@ -1,282 +1,298 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Training Logger</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Logger PWA</title>
 
 <style>
 body {
-  font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
-  background:#f5f5f5;
-  padding:16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial;
+    background:#f4f6f8;
+    margin:0;
+    padding:16px;
 }
+
+h1,h2,h3 {
+    margin:8px 0;
+}
+
 .card {
-  background:#fff;
-  padding:16px;
-  margin-bottom:16px;
-  border-radius:8px;
-  box-shadow:0 2px 4px rgba(0,0,0,.1);
+    background:#fff;
+    border-radius:8px;
+    padding:16px;
+    margin-bottom:16px;
+    box-shadow:0 2px 6px rgba(0,0,0,.08);
 }
-.row { display:flex; gap:8px; flex-wrap:wrap; }
-input, select, textarea {
-  padding:8px;
-  border:1px solid #ccc;
-  border-radius:6px;
+
+select,input,textarea,button {
+    padding:6px;
+    font-size:14px;
 }
-button {
-  padding:8px 14px;
-  border:none;
-  border-radius:6px;
-  background:#2563eb;
-  color:#fff;
+
+.set-row {
+    display:flex;
+    gap:6px;
+    margin-bottom:6px;
+    align-items:center;
 }
-button.locked { background:#9ca3af; }
-.set { display:flex; gap:6px; margin-bottom:6px; }
-.prev {
-  background:#f0f9ff;
-  padding:8px;
-  border-radius:6px;
-  font-size:13px;
+
+.prev-box {
+    background:#eef2f7;
+    padding:10px;
+    border-radius:6px;
+    font-size:13px;
+    margin-bottom:10px;
 }
-.pb { background:gold; padding:4px 8px; border-radius:6px; font-weight:600; }
-.up { background:#dcfce7; }
-.down { background:#fee2e2; }
-.iso-prev {
-  font-size:12px;
-  color:#555;
-  background:#f8fafc;
-  padding:6px;
-  border-radius:6px;
+
+.weight-up { background:#dcfce7; }
+.weight-down { background:#fee2e2; }
+.pb { background:gold; padding:2px 6px; border-radius:4px; font-size:12px; }
+
+.locked input, .locked select, .locked textarea {
+    background:#eee;
+    pointer-events:none;
 }
+
+.iso-box {
+    background:#fafafa;
+    padding:8px;
+    border-radius:6px;
+    margin-bottom:6px;
+}
+
 .chart-box {
-  background:#fff;
-  padding:12px;
-  border-radius:8px;
+    background:#fff;
+    padding:16px;
+    border-radius:8px;
 }
 </style>
 </head>
 
 <body>
 
+<h1>Training Logger</h1>
+
 <div class="card">
-  <h2>Training Logger</h2>
-  <div class="row">
-    <button onclick="changeWeek(-1)">◀</button>
-    <strong id="weekLabel"></strong>
-    <button onclick="changeWeek(1)">▶</button>
-    <button onclick="resetData()" style="background:#dc2626">Reset</button>
-  </div>
+    Week:
+    <select id="weekSelect"></select>
+
+    Session Type:
+    <select id="sessionType"></select>
+
+    <button onclick="resetAll()">Reset All</button>
 </div>
 
-<div id="sessions"></div>
+<div id="sessionContainer"></div>
 
 <div class="chart-box">
-  <h3>1RM Progress</h3>
-  <canvas id="rmChart" height="160"></canvas>
-  <div id="actualMax"></div>
+    <h3>1RM Progression</h3>
+    <canvas id="rmChart"></canvas>
+    <div id="bestRM"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-/* ---------------- STORAGE ---------------- */
+/* ------------------ DATA LAYER ------------------ */
 
-let db = JSON.parse(localStorage.getItem("trainingDB")) || {
-  sessions: [],
-  currentWeek: 1
+const STORAGE_KEY = "trainingDB_v3";
+
+let db = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+    sessions: []
 };
 
 function saveDB() {
-  localStorage.setItem("trainingDB", JSON.stringify(db));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
 }
 
-/* ---------------- CONSTANTS ---------------- */
-
-const lifts = ["Squat","Bench","Deadlift"];
-const sessionTypes = ["GVT","Core","Breakdown Banded","Breakdown Pause","Breakdown Other","Mini-Peak","Peak"];
-
-/* ---------------- HELPERS ---------------- */
-
-function setsFor(type) {
-  return type === "GVT" ? 10 : 5;
-}
-
-function findSession(week,lift) {
-  return db.sessions.find(s => s.week===week && s.lift===lift);
-}
-
-function prevSession(lift,type,week) {
-  return [...db.sessions]
-    .reverse()
-    .find(s => s.lift===lift && s.sessionType===type && s.week<week);
-}
-
-function prevIso(lift,week) {
-  return [...db.sessions]
-    .reverse()
-    .find(s => s.lift===lift && s.week<week);
-}
-
-function best1RM(session) {
-  let max = 0;
-  session.sets.forEach(s=>{
-    if(s.weight && s.reps) {
-      const rm = session.sessionType==="Peak"
-        ? s.weight
-        : s.weight * (1 + s.reps/30);
-      if(rm>max) max=rm;
-    }
-  });
-  return Math.round(max);
-}
-
-/* ---------------- RENDER ---------------- */
-
-function render() {
-  document.getElementById("weekLabel").textContent = "Week " + db.currentWeek;
-  const root = document.getElementById("sessions");
-  root.innerHTML = "";
-
-  lifts.forEach(lift=>{
-    let session = findSession(db.currentWeek,lift);
-    if(!session) {
-      session = {
-        week: db.currentWeek,
+function newSession(week, lift, type) {
+    return {
+        id: crypto.randomUUID(),
+        week,
         lift,
-        cycle:"Strength",
-        sessionType:"GVT",
-        sets: Array.from({length:10},()=>({weight:"",reps:""})),
-        isolations: Array.from({length:3},()=>({name:"",sets:"",reps:"",weight:""})),
-        completed:false
-      };
-      db.sessions.push(session);
-      saveDB();
-    }
-
-    const prev = prevSession(lift,session.sessionType,db.currentWeek);
-    const prevIsoData = prevIso(lift,db.currentWeek);
-
-    const card = document.createElement("div");
-    card.className="card";
-
-    card.innerHTML = `
-      <h3>${lift}</h3>
-      <div class="row">
-        <select ${session.completed?"disabled":""}
-          onchange="updateType('${lift}',this.value)">
-          ${sessionTypes.map(t=>`<option ${t===session.sessionType?"selected":""}>${t}</option>`).join("")}
-        </select>
-      </div>
-
-      ${prev?`<div class="prev">
-        Prev ${session.sessionType}: ${best1RM(prev)}kg
-      </div>`:""}
-
-      ${session.sets.map((s,i)=>`
-        <div class="set">
-          <input type="number" placeholder="kg"
-            value="${s.weight}"
-            ${session.completed?"disabled":""}
-            onblur="autoCopyWeight('${lift}',${i},this.value)">
-          <input type="number" placeholder="reps"
-            value="${s.reps}"
-            ${session.completed?"disabled":""}
-            onblur="autoCopyReps('${lift}',${i},this.value)">
-        </div>`).join("")}
-
-      <h4>Isolations</h4>
-      ${prevIsoData?`<div class="iso-prev">
-        Last: ${prevIsoData.isolations.map(i=>i.name+" "+i.weight+"kg").join(" | ")}
-      </div>`:""}
-
-      ${session.isolations.map((i,idx)=>`
-        <div class="set">
-          <input placeholder="Name" value="${i.name}"
-            ${session.completed?"disabled":""}
-            onchange="updateIso('${lift}',${idx},'name',this.value)">
-          <input placeholder="kg" value="${i.weight}"
-            ${session.completed?"disabled":""}
-            onchange="updateIso('${lift}',${idx},'weight',this.value)">
-        </div>`).join("")}
-
-      <button onclick="completeSession('${lift}')"
-        class="${session.completed?"locked":""}">
-        ${session.completed?"Completed":"Complete Session"}
-      </button>
-    `;
-
-    root.appendChild(card);
-  });
-
-  renderChart();
+        type,
+        completed:false,
+        notes:"",
+        sets:[],
+        isolations:[{name:"",sets:"",reps:"",weight:""}]
+    };
 }
 
-/* ---------------- ACTIONS ---------------- */
+/* ------------------ CONSTANTS ------------------ */
 
-function updateType(lift,type) {
-  const s = findSession(db.currentWeek,lift);
-  if(s.completed) return;
-  s.sessionType = type;
-  s.sets = Array.from({length:setsFor(type)},()=>({weight:"",reps:""}));
-  saveDB();
-  render();
+const LIFTS = ["Squat","Bench","Deadlift"];
+const SESSION_TYPES = [
+    "GVT",
+    "Core",
+    "Breakdown Banded",
+    "Breakdown Pause",
+    "Breakdown Other",
+    "Mini-Peak",
+    "Peak"
+];
+
+/* ------------------ UI INIT ------------------ */
+
+const weekSelect = document.getElementById("weekSelect");
+const typeSelect = document.getElementById("sessionType");
+const container = document.getElementById("sessionContainer");
+
+for(let i=1;i<=12;i++){
+    weekSelect.innerHTML += `<option value="${i}">Week ${i}</option>`;
+}
+SESSION_TYPES.forEach(t=>{
+    typeSelect.innerHTML += `<option>${t}</option>`;
+});
+
+weekSelect.onchange = render;
+typeSelect.onchange = render;
+
+/* ------------------ HELPERS ------------------ */
+
+function getSetsCount(type){
+    return type==="GVT" ? 10 : 5;
 }
 
-function autoCopyWeight(lift,i,val) {
-  const s = findSession(db.currentWeek,lift);
-  if(s.sessionType==="GVT" && i===0) {
-    s.sets.forEach((set,idx)=>{ if(idx>0) set.weight=val; });
-    saveDB(); render();
-  }
-}
-
-function autoCopyReps(lift,i,val) {
-  const s = findSession(db.currentWeek,lift);
-  if(s.sessionType!=="GVT" && i===0) {
-    s.sets.forEach((set,idx)=>{ if(idx>0) set.reps=val; });
-    saveDB(); render();
-  }
-}
-
-function updateIso(lift,i,field,val) {
-  findSession(db.currentWeek,lift).isolations[i][field]=val;
-  saveDB();
-}
-
-function completeSession(lift) {
-  findSession(db.currentWeek,lift).completed=true;
-  saveDB(); render();
-}
-
-function changeWeek(d) {
-  db.currentWeek=Math.min(12,Math.max(1,db.currentWeek+d));
-  saveDB(); render();
-}
-
-function resetData() {
-  if(confirm("Delete all data?")) {
-    localStorage.removeItem("trainingDB");
-    location.reload();
-  }
-}
-
-/* ---------------- CHART ---------------- */
-
-function renderChart() {
-  const ctx=document.getElementById("rmChart");
-  const data=lifts.map(l=>{
+function lastEquivalent(lift,type,currentWeek){
     return db.sessions
-      .filter(s=>s.lift===l)
-      .map(s=>best1RM(s));
-  });
-  if(window.rmChart) window.rmChart.destroy();
-  window.rmChart=new Chart(ctx,{
-    type:"line",
-    data:{ labels:data[0].map((_,i)=>i+1),
-      datasets:data.map((d,i)=>({label:lifts[i],data:d}))
+        .filter(s=>s.lift===lift && s.type===type && s.week < currentWeek && s.completed)
+        .sort((a,b)=>b.week-a.week)[0];
+}
+
+function calc1RM(set){
+    return Math.round(set.weight*(1+set.reps/30));
+}
+
+/* ------------------ RENDER ------------------ */
+
+function render(){
+    container.innerHTML = "";
+    const week = +weekSelect.value;
+    const type = typeSelect.value;
+
+    LIFTS.forEach(lift=>{
+        let session = db.sessions.find(s=>s.week===week && s.lift===lift);
+        if(!session){
+            session = newSession(week,lift,type);
+            db.sessions.push(session);
+            saveDB();
+        }
+
+        const prev = lastEquivalent(lift,type,week);
+
+        const card = document.createElement("div");
+        card.className = "card" + (session.completed?" locked":"");
+
+        let html = `<h3>${lift}</h3>`;
+
+        if(prev){
+            html += `<div class="prev-box">
+                <strong>Previous ${type}</strong><br>
+                ${prev.sets.map(s=>`${s.weight}×${s.reps}`).join(", ")}
+            </div>`;
+        }
+
+        const setCount = getSetsCount(type);
+
+        for(let i=0;i<setCount;i++){
+            const s = session.sets[i] || {weight:"",reps:""};
+            html += `
+            <div class="set-row">
+                <input type="number" placeholder="Weight"
+                    value="${s.weight}"
+                    onblur="updateSet('${session.id}',${i},'weight',this.value)">
+                <input type="number" placeholder="Reps"
+                    value="${s.reps}"
+                    onblur="updateSet('${session.id}',${i},'reps',this.value)">
+            </div>`;
+        }
+
+        html += `<h4>Isolations</h4>`;
+        session.isolations.forEach((iso,idx)=>{
+            html+=`
+            <div class="iso-box">
+                <input placeholder="Name" value="${iso.name}"
+                  onblur="updateIso('${session.id}',${idx},'name',this.value)">
+                <input placeholder="Sets" value="${iso.sets}"
+                  onblur="updateIso('${session.id}',${idx},'sets',this.value)">
+                <input placeholder="Reps" value="${iso.reps}"
+                  onblur="updateIso('${session.id}',${idx},'reps',this.value)">
+                <input placeholder="Weight" value="${iso.weight}"
+                  onblur="updateIso('${session.id}',${idx},'weight',this.value)">
+            </div>`;
+        });
+
+        html += `
+        <textarea maxlength="260" placeholder="Notes"
+          onblur="updateNotes('${session.id}',this.value)">${session.notes}</textarea>
+        <br>
+        <button onclick="completeSession('${session.id}')">Complete Session</button>`;
+
+        card.innerHTML = html;
+        container.appendChild(card);
+    });
+
+    renderChart();
+}
+
+/* ------------------ UPDATE HANDLERS ------------------ */
+
+function updateSet(id,i,field,val){
+    const s = db.sessions.find(x=>x.id===id);
+    s.sets[i] ||= {};
+    s.sets[i][field] = +val;
+    saveDB();
+}
+
+function updateIso(id,i,field,val){
+    const s = db.sessions.find(x=>x.id===id);
+    s.isolations[i][field] = val;
+    saveDB();
+}
+
+function updateNotes(id,val){
+    db.sessions.find(x=>x.id===id).notes = val;
+    saveDB();
+}
+
+function completeSession(id){
+    const s = db.sessions.find(x=>x.id===id);
+    s.completed = true;
+    saveDB();
+    render();
+}
+
+function resetAll(){
+    if(confirm("Delete ALL data?")){
+        localStorage.removeItem(STORAGE_KEY);
+        location.reload();
     }
-  });
+}
+
+/* ------------------ CHART ------------------ */
+
+let chart;
+function renderChart(){
+    const ctx = document.getElementById("rmChart");
+    const rms = db.sessions
+        .filter(s=>s.completed)
+        .map(s=>{
+            const best = Math.max(...s.sets.map(set=>calc1RM(set)||0));
+            return {week:s.week,rm:best};
+        });
+
+    const labels = rms.map(r=>`W${r.week}`);
+    const data = rms.map(r=>r.rm);
+
+    if(chart) chart.destroy();
+    chart = new Chart(ctx,{
+        type:"line",
+        data:{labels,datasets:[{label:"1RM",data}]}
+    });
+
+    document.getElementById("bestRM").textContent =
+        "Best 1RM: " + Math.max(0,...data);
 }
 
 render();

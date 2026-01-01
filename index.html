@@ -23,7 +23,7 @@ button{cursor:pointer;}
 .small{font-size:12px;color:#555;}
 textarea{resize:none;width:100%;}
 .locked{opacity:.6;}
-.pb-circle{width:12px;height:12px;border-radius:50%;background:#fde68a;display:inline-block;margin-left:6px;}
+.pb-circle{background:#fde68a;border-radius:50%;width:12px;height:12px;display:inline-block;margin-left:4px;}
 </style>
 </head>
 <body>
@@ -73,7 +73,12 @@ function save(){ localStorage.setItem('db',JSON.stringify(db)); }
 
 /* ---------------- HELPERS ---------------- */
 function calc1RM(w,r){ return r>0 ? Math.round(w*(1+r/30)) : 0; }
-function max1RM(sets){ return sets.length?Math.max(...sets.map(s=>calc1RM(s.w,s.r))):0; }
+function avg1RM(sets,peak){
+  if(!sets.length) return 0;
+  return peak
+    ? Math.max(...sets.map(s=>calc1RM(s.w,s.r)))
+    : Math.round(sets.reduce((a,s)=>a+calc1RM(s.w,s.r),0)/sets.length);
+}
 
 function prevEquivalent(lift,type){
   const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type);
@@ -100,21 +105,22 @@ function render(){
 
     const gvt=ses.weekType==='GVT';
     const setCount=gvt?10:5;
-    const fixedReps=null; // all sessions reps are editable except auto-copy feature
 
     const prevMain=prevEquivalent(lift,ses.weekType);
     const prevIso=prevIsolation(lift);
 
+    // MAIN SETS: preserve current values if exist
     ses.sets = Array.from({length:setCount},(_,i)=>{
       const prevW = ses.sets[i]?.w || '';
       const prevR = ses.sets[i]?.r || '';
       return {w:prevW,r:prevR};
     });
 
+    // ISOLATIONS: only copy previous week if current is empty
     for(let i=0;i<3;i++){
       if(!ses.isolations[i]) ses.isolations[i]={};
-      if(prevIso){
-        Object.assign(ses.isolations[i],prevIso.isolations[i]||{});
+      if(prevIso && Object.keys(ses.isolations[i]).length===0){
+        ses.isolations[i] = { ...prevIso.isolations[i] };
       }
     }
 
@@ -123,10 +129,11 @@ function render(){
     card.innerHTML=`<h3>${lift}${ses.completed?'<span class="pb-badge">Completed</span>':''}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
+    // PREVIOUS SESSION BOX
     const prev=document.createElement('div'); prev.className='prev';
     prev.innerHTML='<strong>Previous</strong><br>';
     if(prevMain){
-      prev.innerHTML+=`1RM: ${max1RM(prevMain.sets)}<br>`;
+      prev.innerHTML+=`1RM: ${avg1RM(prevMain.sets,ses.weekType==='Peak')}<br>`;
       prevMain.sets.forEach(s=>prev.innerHTML+=`${s.w}×${s.r}<br>`);
     } else prev.innerHTML+='—<br>';
     if(prevIso){
@@ -136,15 +143,12 @@ function render(){
     }
 
     const curr=document.createElement('div'); curr.className='curr';
-
     ses.sets.forEach((s,i)=>{
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} 
-          onblur="autoCopyMain('${lift}',${i},'w',this)">
-        <input type="number" value="${s.r}" ${ses.completed?'disabled':''} 
-          onblur="autoCopyMain('${lift}',${i},'r',this)">
+        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} onblur="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" value="${s.r}" ${ses.completed?'disabled':''} onblur="setMain('${lift}',${i},'r',this.value)">
       </div>`;
     });
 
@@ -154,27 +158,27 @@ function render(){
       <div class="iso">
         <div class="small"><strong>Isolation ${i+1}</strong></div>
         <label class="small">Exercise</label>
-        <input value="${iso.name||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'name',this.value)">
+        <input value="${iso.name||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'name',this.value)">
         <div class="row">
           <div><label class="small">Sets</label>
-            <input type="number" value="${iso.sets||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'sets',this.value)">
+            <input type="number" value="${iso.sets||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'sets',this.value)">
           </div>
           <div><label class="small">Reps</label>
-            <input type="number" value="${iso.reps||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'reps',this.value)">
+            <input type="number" value="${iso.reps||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'reps',this.value)">
           </div>
           <div><label class="small">Weight</label>
-            <input type="number" value="${iso.weight||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'weight',this.value)">
+            <input type="number" value="${iso.weight||''}" ${ses.completed?'disabled':''} onblur="setIso('${lift}',${i},'weight',this.value)">
           </div>
         </div>
       </div>`;
     });
 
     curr.innerHTML+=`
-      <textarea maxlength="260" ${ses.completed?'readonly':''} oninput="setNotes('${lift}',this.value)">${ses.notes}</textarea>
+      <textarea maxlength="260" ${ses.completed?'readonly':''} onblur="setNotes('${lift}',this.value)">${ses.notes}</textarea>
       <button ${ses.completed?'disabled':''} onclick="complete('${lift}')">
         ${ses.completed?'Completed':'Complete Session'}
       </button>
-      ${ses.completed ? `<button onclick="unlock('${lift}')">Unlock Session</button>` : ''}
+      ${ses.completed?'<button onclick="unlock(\''+lift+'\')">Unlock Session</button>':''}
     `;
 
     row.append(prev,curr);
@@ -186,39 +190,28 @@ function render(){
   save();
 }
 
-/* ---------------- AUTO-COPY FOR MAIN LIFTS ---------------- */
-function autoCopyMain(lift,index,field,input){
-  setMain(lift,index,field,input.value);
-  if(index===0){ // only first set
-    const ses=db.lifts[lift].find(s=>s.week===currentWeek);
-    for(let i=1;i<ses.sets.length;i++){
-      ses.sets[i][field] = input.value;
-    }
-  }
-  save();
-  render();
-}
-
 /* ---------------- SETTERS ---------------- */
 function setMain(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).sets[i][f]=v; save(); }
 function setIso(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save(); }
 function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(); }
 
-/* ---------------- COMPLETE/UNLOCK ---------------- */
+/* ---------------- COMPLETE ---------------- */
 function complete(lift){
   const s=db.lifts[lift].find(x=>x.week===currentWeek);
   s.completed=true;
-  const max=max1RM(s.sets);
-  db.history.push({lift,max});
-  if(!db.pbs[lift] || max>db.pbs[lift]) db.pbs[lift]=max;
+  // Store isolations for next week
   db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
   db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
   save(); render();
 }
 
+/* ---------------- UNLOCK ---------------- */
 function unlock(lift){
   const s = db.lifts[lift].find(x => x.week === currentWeek);
-  if(s){ s.completed = false; render(); }
+  if(s){
+    s.completed = false;
+    render();
+  }
 }
 
 /* ---------------- NAVIGATION ---------------- */
@@ -261,21 +254,31 @@ function drawChart(){
         label:l,
         data:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
-          return s ? max1RM(s.sets) : null;
+          return s ? Math.max(...s.sets.map(set=>calc1RM(set.w,set.r))) : null;
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
         fill:false,
-        pointBackgroundColor:Array.from({length:MAX_WEEKS},(_,i)=>{
-          const s=db.lifts[l].find(x=>x.week===i+1);
-          return (s && (s.weekType==='Mini-Peak'||s.weekType==='Peak') && s.sets.length && s.sets.some(x=>x.w==db.pbs[l]))?'#fde68a':'#fff';
-        }),
-        pointRadius:Array.from({length:MAX_WEEKS},(_,i)=>{
-          const s=db.lifts[l].find(x=>x.week===i+1);
-          return (s && (s.weekType==='Mini-Peak'||s.weekType==='Peak') && s.sets.length && s.sets.some(x=>x.w==db.pbs[l]))?9:3;
-        })
+        pointRadius: function(context){
+          const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
+          if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
+            const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
+            const prevMax=db.pbs[l]||0;
+            if(maxW>prevMax) return 9; // triple size for PB
+          }
+          return 3;
+        },
+        pointBackgroundColor: function(context){
+          const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
+          if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
+            const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
+            const prevMax=db.pbs[l]||0;
+            if(maxW>prevMax) return '#fde68a';
+          }
+          return '#fff';
+        }
       }))
     },
-    options:{responsive:true,plugins:{legend:{position:'top'},title:{display:true,text:'1RM Progress'}}}
+    options:{responsive:true,plugins:{legend:{position:'top'}}}
   });
 }
 
@@ -285,9 +288,6 @@ typeSel.onchange = () => {
     const ses=db.lifts[lift].find(s=>s.week===currentWeek);
     if(ses){
       ses.weekType = typeSel.value;
-      const gvt=ses.weekType==='GVT';
-      const setCount=gvt?10:5;
-      ses.sets = Array.from({length:setCount},(_,i)=>({w:'',r:''}));
       ses.completed=false;
     }
   });

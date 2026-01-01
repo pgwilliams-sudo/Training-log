@@ -23,9 +23,6 @@ button{cursor:pointer;}
 .small{font-size:12px;color:#555;}
 textarea{resize:none;width:100%;}
 .locked{opacity:.6;}
-.weight-up{background:#dcfce7;}    /* green */
-.weight-down{background:#fee2e2;}  /* red */
-.weight-pb{background:#fde68a;}    /* gold */
 .pb-badge{background:#fde68a;padding:2px 6px;border-radius:4px;margin-left:4px;font-size:12px;}
 </style>
 </head>
@@ -98,17 +95,6 @@ function prevIsolation(lift){
   return db.isolations[lift].find(s=>s.week===currentWeek-1) || null;
 }
 
-function weightClass(curr, prev, lift){
-  if(!curr) return '';
-  const c = Number(curr), p = Number(prev);
-  if(prev!==undefined && !isNaN(c) && !isNaN(p)){
-    if(!db.pbs[lift] || c>=db.pbs[lift]) return 'weight-pb';
-    if(c>p) return 'weight-up';
-    if(c<p) return 'weight-down';
-  }
-  return '';
-}
-
 /* ---------------- RENDER ---------------- */
 function render(){
   const container=document.getElementById('sessions');
@@ -132,9 +118,13 @@ function render(){
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
     const prevIso=prevIsolation(lift);
 
+    // Auto-copy first weight or rep
     ses.sets = Array.from({length:setCount},(_,i)=>{
       const prevW = ses.sets[i]?.w || '';
       const prevR = ses.sets[i]?.r || (fixedReps||'');
+      // Auto-copy logic
+      if(i>0 && gvt && prevW && !ses.sets[i]?.w) return {w:prevW,r:prevR};
+      if(i>0 && !gvt && prevR && !ses.sets[i]?.r) return {w:prevW,r:prevR};
       return {w:prevW,r:prevR};
     });
 
@@ -165,19 +155,13 @@ function render(){
     const curr=document.createElement('div'); curr.className='curr';
 
     ses.sets.forEach((s,i)=>{
-      const isPeakWeek = ses.weekType==='Mini-Peak'||ses.weekType==='Peak';
-      const max1RM = Math.max(...ses.sets.map(x=>calc1RM(x.w,x.r)));
-      const isPbSet = isPeakWeek && calc1RM(s.w,s.r) === db.pbs[lift];
-
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" 
-          class="${weightClass(s.w, prevMain?.sets[i]?.w,lift)} ${isPbSet?'weight-pb':''}" 
-          ${ses.completed?'disabled':''}
-          onchange="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" value="${s.w}" ${ses.completed?'disabled':''}
+          oninput="setMain('${lift}',${i},'w',this.value)">
         <input type="number" value="${s.r}" ${fixedReps?'disabled':''} ${ses.completed?'disabled':''}
-          onchange="setMain('${lift}',${i},'r',this.value)">
+          oninput="setMain('${lift}',${i},'r',this.value)">
       </div>`;
     });
 
@@ -196,8 +180,7 @@ function render(){
             <input type="number" value="${iso.reps||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'reps',this.value)">
           </div>
           <div><label class="small">Weight</label>
-            <input type="number" value="${iso.weight||''}" class="${weightClass(iso.weight,prevIso?.isolations[i]?.weight,lift)}" ${ses.completed?'disabled':''}
-              oninput="setIso('${lift}',${i},'weight',this.value)">
+            <input type="number" value="${iso.weight||''}" ${ses.completed?'disabled':''} oninput="setIso('${lift}',${i},'weight',this.value)">
           </div>
         </div>
       </div>`;
@@ -229,9 +212,6 @@ function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(
 function complete(lift){
   const s=db.lifts[lift].find(x=>x.week===currentWeek);
   s.completed=true;
-  const max1RM = Math.max(...s.sets.map(x=>calc1RM(x.w,x.r)));
-  db.history.push({lift,max1RM});
-  if(!db.pbs[lift] || max1RM>db.pbs[lift]) db.pbs[lift]=max1RM;
   db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
   db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
   save(); render();
@@ -240,7 +220,10 @@ function complete(lift){
 /* ---------------- UNLOCK ---------------- */
 function unlock(lift){
   const s = db.lifts[lift].find(x => x.week === currentWeek);
-  if(s){ s.completed = false; render(); }
+  if(s){
+    s.completed = false;
+    render();
+  }
 }
 
 /* ---------------- NAVIGATION ---------------- */
@@ -283,27 +266,24 @@ function drawChart(){
         label:l,
         data:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
-          return s ? Math.max(...s.sets.map(x=>calc1RM(x.w,x.r))):null;
+          return s ? Math.max(...s.sets.map(ss=>ss.w)) : null; // heaviest weight
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
         fill:false,
-        pointRadius:Array.from({length:MAX_WEEKS},(_,i)=>{
-          const s=db.lifts[l].find(x=>x.week===i+1);
-          if(!s) return 3;
-          const max1RM=Math.max(...s.sets.map(x=>calc1RM(x.w,x.r)));
-          if((s.weekType==='Mini-Peak'||s.weekType==='Peak') && db.pbs[l]===max1RM) return 9; // 3x bigger
-          return 3;
-        }),
-        pointBackgroundColor:Array.from({length:MAX_WEEKS},(_,i)=>{
-          const s=db.lifts[l].find(x=>x.week===i+1);
-          if(!s) return 'rgba(0,0,0,0)';
-          const max1RM=Math.max(...s.sets.map(x=>calc1RM(x.w,x.r)));
-          if((s.weekType==='Mini-Peak'||s.weekType==='Peak') && db.pbs[l]===max1RM) return '#fde68a';
-          return 'rgba(0,0,0,0)';
-        })
+        pointRadius:10,
+        pointBackgroundColor: function(ctx){
+          const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
+          if(!s) return '#000';
+          if(['Mini-Peak','Peak'].includes(s.weekType) && Math.max(...s.sets.map(ss=>ss.w))===Math.max(...s.sets.map(ss=>ss.w))) return '#fde68a';
+          return '#000';
+        }
       }))
     },
-    options:{responsive:true,plugins:{legend:{position:'top'},title:{display:true,text:'1RM Progress Chart'}}}
+    options:{
+      responsive:true,
+      plugins:{legend:{position:'top'}},
+      elements:{point:{radius:10}}
+    }
   });
 }
 

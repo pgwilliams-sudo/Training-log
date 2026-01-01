@@ -1,301 +1,223 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Training Logger PWA</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Training Log PWA</title>
 
 <style>
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial;
-    background:#f4f6f8;
-    margin:0;
-    padding:16px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f4f4f4;
+  margin: 0;
+  padding: 16px;
 }
-
-h1,h2,h3 {
-    margin:8px 0;
-}
-
+h1, h2, h3 { margin: 6px 0; }
 .card {
-    background:#fff;
-    border-radius:8px;
-    padding:16px;
-    margin-bottom:16px;
-    box-shadow:0 2px 6px rgba(0,0,0,.08);
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,.1);
 }
-
-select,input,textarea,button {
-    padding:6px;
-    font-size:14px;
+select, input, button, textarea {
+  padding: 6px;
+  margin: 4px;
 }
-
+button {
+  cursor: pointer;
+}
+.locked {
+  opacity: 0.6;
+  pointer-events: none;
+}
 .set-row {
-    display:flex;
-    gap:6px;
-    margin-bottom:6px;
-    align-items:center;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
-
 .prev-box {
-    background:#eef2f7;
-    padding:10px;
-    border-radius:6px;
-    font-size:13px;
-    margin-bottom:10px;
+  background: #eef6ff;
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
 }
-
-.weight-up { background:#dcfce7; }
-.weight-down { background:#fee2e2; }
-.pb { background:gold; padding:2px 6px; border-radius:4px; font-size:12px; }
-
-.locked input, .locked select, .locked textarea {
-    background:#eee;
-    pointer-events:none;
-}
-
+.pb { background: gold; padding: 2px 6px; border-radius: 4px; }
+.up { background: #dcfce7; }
+.down { background: #fee2e2; }
 .iso-box {
-    background:#fafafa;
-    padding:8px;
-    border-radius:6px;
-    margin-bottom:6px;
+  background: #f9fafb;
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
 }
-
-.chart-box {
-    background:#fff;
-    padding:16px;
-    border-radius:8px;
-}
+textarea { width: 100%; max-length: 260; }
+.week-btn { margin: 2px; }
 </style>
 </head>
 
 <body>
 
-<h1>Training Logger</h1>
+<h1>Training Log</h1>
 
 <div class="card">
-    Week:
-    <select id="weekSelect"></select>
-
-    Session Type:
-    <select id="sessionType"></select>
-
-    <button onclick="resetAll()">Reset All</button>
+  <strong>Weeks</strong><br/>
+  <div id="weekButtons"></div>
 </div>
 
-<div id="sessionContainer"></div>
+<div class="card">
+  Cycle:
+  <select id="cycleSelect">
+    <option value="Hybrid">Hybrid</option>
+    <option value="Strength">Strength</option>
+  </select>
 
-<div class="chart-box">
-    <h3>1RM Progression</h3>
-    <canvas id="rmChart"></canvas>
-    <div id="bestRM"></div>
+  Session Type:
+  <select id="sessionTypeSelect">
+    <option>GVT</option>
+    <option>Core</option>
+    <option>Breakdown Banded</option>
+    <option>Breakdown Pause</option>
+    <option>Breakdown Other</option>
+    <option>Mini-Peak</option>
+    <option>Peak</option>
+  </select>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<div id="sessions"></div>
+
+<button onclick="softReset()">Reset Current Cycle</button>
 
 <script>
-/* ------------------ DATA LAYER ------------------ */
+/* ---------------- STORAGE ---------------- */
+const DB_KEY = "trainingDB_v2";
+let db = JSON.parse(localStorage.getItem(DB_KEY)) || { sessions: [], isolations: {} };
+let currentWeek = 1;
 
-const STORAGE_KEY = "trainingDB_v3";
+/* ---------------- HELPERS ---------------- */
+function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+function setsFor(type){ return type==="GVT" ? 10 : 5; }
+function liftList(){ return ["Squat","Bench","Deadlift"]; }
 
-let db = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
-    sessions: []
-};
+/* ---------------- WEEK BUTTONS ---------------- */
+function renderWeeks(){
+  let html="";
+  for(let i=1;i<=12;i++){
+    html+=`<button class="week-btn" onclick="goWeek(${i})">Week ${i}</button>`;
+  }
+  document.getElementById("weekButtons").innerHTML=html;
+}
+function goWeek(w){ currentWeek=w; render(); }
 
-function saveDB() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+/* ---------------- SESSION LOOKUPS ---------------- */
+function findPrevSession(lift,type){
+  return [...db.sessions]
+    .filter(s=>s.lift===lift && s.type===type)
+    .sort((a,b)=>b.time-a.time)[0];
 }
 
-function newSession(week, lift, type) {
-    return {
-        id: crypto.randomUUID(),
-        week,
-        lift,
-        type,
-        completed:false,
-        notes:"",
-        sets:[],
-        isolations:[{name:"",sets:"",reps:"",weight:""}]
-    };
-}
-
-/* ------------------ CONSTANTS ------------------ */
-
-const LIFTS = ["Squat","Bench","Deadlift"];
-const SESSION_TYPES = [
-    "GVT",
-    "Core",
-    "Breakdown Banded",
-    "Breakdown Pause",
-    "Breakdown Other",
-    "Mini-Peak",
-    "Peak"
-];
-
-/* ------------------ UI INIT ------------------ */
-
-const weekSelect = document.getElementById("weekSelect");
-const typeSelect = document.getElementById("sessionType");
-const container = document.getElementById("sessionContainer");
-
-for(let i=1;i<=12;i++){
-    weekSelect.innerHTML += `<option value="${i}">Week ${i}</option>`;
-}
-SESSION_TYPES.forEach(t=>{
-    typeSelect.innerHTML += `<option>${t}</option>`;
-});
-
-weekSelect.onchange = render;
-typeSelect.onchange = render;
-
-/* ------------------ HELPERS ------------------ */
-
-function getSetsCount(type){
-    return type==="GVT" ? 10 : 5;
-}
-
-function lastEquivalent(lift,type,currentWeek){
-    return db.sessions
-        .filter(s=>s.lift===lift && s.type===type && s.week < currentWeek && s.completed)
-        .sort((a,b)=>b.week-a.week)[0];
-}
-
-function calc1RM(set){
-    return Math.round(set.weight*(1+set.reps/30));
-}
-
-/* ------------------ RENDER ------------------ */
-
+/* ---------------- RENDER ---------------- */
 function render(){
-    container.innerHTML = "";
-    const week = +weekSelect.value;
-    const type = typeSelect.value;
+  const cycle = cycleSelect.value;
+  const type = sessionTypeSelect.value;
+  let html="";
 
-    LIFTS.forEach(lift=>{
-        let session = db.sessions.find(s=>s.week===week && s.lift===lift);
-        if(!session){
-            session = newSession(week,lift,type);
-            db.sessions.push(session);
-            saveDB();
-        }
+  liftList().forEach(lift=>{
+    const prev = findPrevSession(lift,type);
+    const locked = prev && prev.week===currentWeek;
 
-        const prev = lastEquivalent(lift,type,week);
+    html+=`<div class="card ${locked?'locked':''}">
+      <h3>${lift}</h3>`;
 
-        const card = document.createElement("div");
-        card.className = "card" + (session.completed?" locked":"");
+    if(prev){
+      html+=`<div class="prev-box">
+        Prev: ${prev.sets.map(s=>`${s.w}×${s.r}`).join(", ")}
+      </div>`;
+    }
 
-        let html = `<h3>${lift}</h3>`;
+    for(let i=0;i<setsFor(type);i++){
+      html+=`<div class="set-row">
+        <input type="number" placeholder="Wt" 
+          onblur="autoCopyWeight(event,'${lift}',${i})">
+        <input type="number" placeholder="Reps"
+          onblur="autoCopyReps(event,'${lift}',${i})">
+      </div>`;
+    }
 
-        if(prev){
-            html += `<div class="prev-box">
-                <strong>Previous ${type}</strong><br>
-                ${prev.sets.map(s=>`${s.weight}×${s.reps}`).join(", ")}
-            </div>`;
-        }
+    html+=`<h4>Isolations</h4>`;
+    for(let i=0;i<3;i++){
+      html+=`<div class="set-row">
+        <input placeholder="Name">
+        <input type="number" placeholder="Sets">
+        <input type="number" placeholder="Reps">
+        <input type="number" placeholder="Wt">
+      </div>`;
+    }
 
-        const setCount = getSetsCount(type);
+    html+=`<textarea placeholder="Notes (260 chars)"></textarea>
+      <button onclick="completeSession('${lift}')">Complete Session</button>
+    </div>`;
+  });
 
-        for(let i=0;i<setCount;i++){
-            const s = session.sets[i] || {weight:"",reps:""};
-            html += `
-            <div class="set-row">
-                <input type="number" placeholder="Weight"
-                    value="${s.weight}"
-                    onblur="updateSet('${session.id}',${i},'weight',this.value)">
-                <input type="number" placeholder="Reps"
-                    value="${s.reps}"
-                    onblur="updateSet('${session.id}',${i},'reps',this.value)">
-            </div>`;
-        }
-
-        html += `<h4>Isolations</h4>`;
-        session.isolations.forEach((iso,idx)=>{
-            html+=`
-            <div class="iso-box">
-                <input placeholder="Name" value="${iso.name}"
-                  onblur="updateIso('${session.id}',${idx},'name',this.value)">
-                <input placeholder="Sets" value="${iso.sets}"
-                  onblur="updateIso('${session.id}',${idx},'sets',this.value)">
-                <input placeholder="Reps" value="${iso.reps}"
-                  onblur="updateIso('${session.id}',${idx},'reps',this.value)">
-                <input placeholder="Weight" value="${iso.weight}"
-                  onblur="updateIso('${session.id}',${idx},'weight',this.value)">
-            </div>`;
-        });
-
-        html += `
-        <textarea maxlength="260" placeholder="Notes"
-          onblur="updateNotes('${session.id}',this.value)">${session.notes}</textarea>
-        <br>
-        <button onclick="completeSession('${session.id}')">Complete Session</button>`;
-
-        card.innerHTML = html;
-        container.appendChild(card);
-    });
-
-    renderChart();
+  document.getElementById("sessions").innerHTML=html;
 }
 
-/* ------------------ UPDATE HANDLERS ------------------ */
+/* ---------------- COMPLETE ---------------- */
+function completeSession(lift){
+  const card=[...document.querySelectorAll(".card")]
+    .find(c=>c.querySelector("h3")?.innerText===lift);
 
-function updateSet(id,i,field,val){
-    const s = db.sessions.find(x=>x.id===id);
-    s.sets[i] ||= {};
-    s.sets[i][field] = +val;
-    saveDB();
+  const rows=[...card.querySelectorAll(".set-row")].slice(0,setsFor(sessionTypeSelect.value));
+  const sets=rows.map(r=>({
+    w:r.children[0].value,
+    r:r.children[1].value
+  }));
+
+  db.sessions.push({
+    week:currentWeek,
+    lift,
+    type:sessionTypeSelect.value,
+    cycle:cycleSelect.value,
+    sets,
+    time:Date.now()
+  });
+
+  saveDB();
+  render();
 }
 
-function updateIso(id,i,field,val){
-    const s = db.sessions.find(x=>x.id===id);
-    s.isolations[i][field] = val;
-    saveDB();
+/* ---------------- AUTOCOPY ---------------- */
+function autoCopyWeight(e,lift,idx){
+  if(idx!==0) return;
+  const val=e.target.value;
+  if(!val) return;
+  const rows=[...e.target.closest(".card").querySelectorAll(".set-row")];
+  rows.slice(1).forEach(r=>r.children[0].value=val);
+}
+function autoCopyReps(e,lift,idx){
+  if(idx!==0) return;
+  if(sessionTypeSelect.value==="GVT") return;
+  const val=e.target.value;
+  if(!val) return;
+  const rows=[...e.target.closest(".card").querySelectorAll(".set-row")];
+  rows.slice(1).forEach(r=>r.children[1].value=val);
 }
 
-function updateNotes(id,val){
-    db.sessions.find(x=>x.id===id).notes = val;
-    saveDB();
-}
-
-function completeSession(id){
-    const s = db.sessions.find(x=>x.id===id);
-    s.completed = true;
+/* ---------------- RESET ---------------- */
+function softReset(){
+  if(confirm("Reset current cycle? History is kept.")){
+    db.sessions=[];
     saveDB();
     render();
+  }
 }
 
-function resetAll(){
-    if(confirm("Delete ALL data?")){
-        localStorage.removeItem(STORAGE_KEY);
-        location.reload();
-    }
-}
-
-/* ------------------ CHART ------------------ */
-
-let chart;
-function renderChart(){
-    const ctx = document.getElementById("rmChart");
-    const rms = db.sessions
-        .filter(s=>s.completed)
-        .map(s=>{
-            const best = Math.max(...s.sets.map(set=>calc1RM(set)||0));
-            return {week:s.week,rm:best};
-        });
-
-    const labels = rms.map(r=>`W${r.week}`);
-    const data = rms.map(r=>r.rm);
-
-    if(chart) chart.destroy();
-    chart = new Chart(ctx,{
-        type:"line",
-        data:{labels,datasets:[{label:"1RM",data}]}
-    });
-
-    document.getElementById("bestRM").textContent =
-        "Best 1RM: " + Math.max(0,...data);
-}
-
+/* ---------------- INIT ---------------- */
+renderWeeks();
 render();
 </script>
+
 </body>
 </html>

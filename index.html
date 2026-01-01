@@ -2,52 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Training Logger</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;background:#f4f4f4;padding:15px}
-.card{background:#fff;border-radius:8px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,.1)}
-.row{display:flex;gap:12px;flex-wrap:wrap}
-.session{margin-top:15px;border-top:1px solid #ddd;padding-top:15px}
-.prev{flex:1;background:#fafafa;border:1px dashed #bbb;border-radius:6px;padding:10px}
-.curr{flex:1}
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial;background:#f3f4f6;padding:12px}
+.card{background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 2px 4px rgba(0,0,0,.08)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.session{margin-top:10px}
 .set{display:flex;gap:6px;margin-bottom:6px}
-.iso{background:#fafafa;border-radius:6px;padding:8px;margin-bottom:6px}
+.iso{background:#f9fafb;padding:8px;border-radius:6px;margin-bottom:6px}
 .small{font-size:12px;color:#555}
-button{padding:8px;border-radius:6px;border:none;cursor:pointer}
-select,input,textarea{padding:6px;border-radius:6px;border:1px solid #ccc}
-textarea{width:100%;resize:none}
 .locked{opacity:.6;pointer-events:none}
+textarea{width:100%;resize:none}
 
-/* Progress colours (weight only) */
-.up{background:#dcfce7}
-.down{background:#fee2e2}
-.pb{background:#fde68a}
-
+.weight-up{background:#dcfce7}
+.weight-down{background:#fee2e2}
+.weight-pb{background:#fde68a}
 .pb-badge{background:#fde68a;padding:2px 6px;border-radius:4px;margin-left:6px;font-size:12px}
-.week-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:10px}
-.week-btn{padding:6px;border-radius:6px;border:none}
-.active{background:#3b82f6;color:#fff}
 </style>
 </head>
 
 <body>
 
 <div class="card">
-  <h2>Training Logger</h2>
+  <strong id="weekLabel">Week 1</strong>
   <div class="row">
-    <button onclick="navWeek(-1)">◀</button>
-    <strong id="weekLabel"></strong>
-    <button onclick="navWeek(1)">▶</button>
+    <button onclick="changeWeek(-1)">◀</button>
+    <button onclick="changeWeek(1)">▶</button>
 
     <select id="cycle">
       <option>Strength</option>
       <option>Hybrid</option>
     </select>
 
-    <select id="type">
+    <select id="weekType">
       <option>GVT</option>
       <option>Core Session</option>
       <option>Breakdown Banded</option>
@@ -59,256 +49,215 @@ textarea{width:100%;resize:none}
 
     <button onclick="resetAll()" style="background:#ef4444;color:#fff">Reset</button>
   </div>
-
-  <div id="weeks" class="week-grid"></div>
 </div>
 
 <div id="sessions"></div>
 
 <div class="card">
-  <h3>1RM Progress</h3>
-  <p class="small">Highest 1RM achieved: <strong id="globalMax">—</strong></p>
+  <strong>Theoretical 1RM Progress</strong>
+  <div class="small" id="maxBox"></div>
   <canvas id="chart"></canvas>
 </div>
 
 <script>
-/* ---------------- STORAGE ---------------- */
+/* ---------------- DATABASE ---------------- */
 let db = JSON.parse(localStorage.getItem('db')) || {
-  sessions:[],
-  isolations:[],
-  pbs:{}
+  sessions: [],
+  history: [],
+  isolations: {},
+  pbs: {}
 };
 
 const lifts = ['Squat','Bench','Deadlift'];
-const MAX_WEEKS = 24;
-let week = 1;
+let currentWeek = 1;
 
-const cycleSel = document.getElementById('cycle');
-const typeSel  = document.getElementById('type');
+/* ---------------- UTIL ---------------- */
+const save = () => localStorage.setItem('db', JSON.stringify(db));
+const getSession = (lift) =>
+  db.sessions.find(s => s.week === currentWeek && s.lift === lift);
 
-function save(){localStorage.setItem('db',JSON.stringify(db));}
+const heaviest1RM = sets =>
+  Math.max(...sets.map(s => s.w && s.r ? Math.round(s.w*(1+s.r/30)) : 0),0);
 
-/* ---------------- HELPERS ---------------- */
-function setsFor(type){ return type==='GVT'?10:5; }
-
-function fixedReps(type){
-  if(type!=='GVT') return null;
-  return cycleSel.value==='Strength'?5:10;
-}
-
-function calc1RM(w,r){ return Math.round(w*(1+r/30)); }
-
-function session1RM(session){
-  let max = 0;
-  session.sets.forEach(s=>{
-    if(s.w && s.r){
-      const rm = session.type==='Peak' ? s.w : calc1RM(s.w,s.r);
-      if(rm>max) max=rm;
-    }
-  });
-  return max;
-}
-
-function prevEquivalent(lift,type){
-  const prev = db.sessions
-    .filter(s=>s.lift===lift && s.type===type && s.completed && s.week<week)
-    .sort((a,b)=>b.week-a.week);
-  return prev[0]||null;
-}
-
-function prevIso(lift){
-  const prev = db.isolations
-    .filter(i=>i.lift===lift && i.week<week)
-    .sort((a,b)=>b.week-a.week);
-  return prev[0]||null;
-}
+const prevEquivalent = (lift, type, cycle) =>
+  [...db.history].reverse().find(h =>
+    h.lift===lift && h.weekType===type && h.cycle===cycle);
 
 /* ---------------- RENDER ---------------- */
 function render(){
-  document.getElementById('weekLabel').textContent=`Week ${week}`;
-  renderWeeks();
-
-  const wrap=document.getElementById('sessions');
-  wrap.innerHTML='';
+  document.getElementById('weekLabel').textContent = `Week ${currentWeek}`;
+  const container=document.getElementById('sessions');
+  container.innerHTML='';
 
   lifts.forEach(lift=>{
-    let s = db.sessions.find(x=>x.week===week && x.lift===lift);
+    let s = getSession(lift);
     if(!s){
-      s={week,lift,cycle:cycleSel.value,type:typeSel.value,sets:[],notes:'',completed:false};
-      s.sets = Array.from({length:setsFor(s.type)},()=>({w:'',r:fixedReps(s.type)||''}));
+      s={week:currentWeek,lift,cycle:cycle.value,weekType:weekType.value,
+         sets:[],isolations:[],notes:'',completed:false};
       db.sessions.push(s);
     }
 
-    const prev = prevEquivalent(lift,s.type);
-    const prevIsoData = prevIso(lift);
+    const gvt = s.weekType==='GVT';
+    const setCount = gvt?10:5;
+    const fixedReps = gvt?(s.cycle==='Strength'?5:10):null;
+
+    while(s.sets.length<setCount)
+      s.sets.push({w:'',r:fixedReps||''});
+    s.sets = s.sets.slice(0,setCount);
+
+    while(s.isolations.length<3)
+      s.isolations.push({});
+
+    const prev = prevEquivalent(lift,s.weekType,s.cycle);
 
     const card=document.createElement('div');
     card.className='card session'+(s.completed?' locked':'');
+    card.innerHTML=`<strong>${lift}${s.completed?'<span class="pb-badge">Completed</span>':''}</strong>`;
 
-    let pb = db.pbs[lift] && session1RM(s)>=db.pbs[lift];
-    card.innerHTML=`<h3>${lift}${pb?'<span class="pb-badge">PB</span>':''}</h3>`;
-
-    const row=document.createElement('div'); row.className='row';
-
-    /* PREVIOUS */
-    const p=document.createElement('div'); p.className='prev';
-    p.innerHTML='<strong>Previous Equivalent</strong><br>';
-    if(prev){
-      p.innerHTML+=`1RM: ${session1RM(prev)}<br>`;
-      prev.sets.forEach(x=>p.innerHTML+=`${x.w}×${x.r}<br>`);
-    } else p.innerHTML+='—<br>';
-
-    if(prevIsoData){
-      prevIsoData.data.forEach(i=>{
-        p.innerHTML+=`<span class="small">${i.name} ${i.sets}×${i.reps}@${i.weight}</span><br>`;
-      });
-    }
-
-    /* CURRENT */
-    const c=document.createElement('div'); c.className='curr';
-
+    /* SETS */
     s.sets.forEach((set,i)=>{
-      c.innerHTML+=`
+      card.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${set.w}"
-          oninput="mainInput('${lift}',${i},'w',this.value)">
-        <input type="number" value="${set.r}"
-          ${fixedReps(s.type)?'disabled':''}
-          oninput="mainInput('${lift}',${i},'r',this.value)">
+        <input type="number" value="${set.w}" 
+          class="${weightClass(lift,set.w,prev?.sets?.[i]?.w)}"
+          oninput="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" value="${set.r}" ${fixedReps?'disabled':''}
+          oninput="setMain('${lift}',${i},'r',this.value)">
       </div>`;
     });
 
     /* ISOLATIONS */
-    if(!s.iso){
-      s.iso = prevIsoData ? JSON.parse(JSON.stringify(prevIsoData.data)) :
-        [{},{},{}];
-    }
-
-    c.innerHTML+='<strong>Isolation</strong>';
-    s.iso.forEach((i,idx)=>{
-      c.innerHTML+=`
+    card.innerHTML+='<div class="small">Isolation</div>';
+    s.isolations.forEach((iso,i)=>{
+      card.innerHTML+=`
       <div class="iso">
-        <input placeholder="Exercise" value="${i.name||''}" oninput="isoInput('${lift}',${idx},'name',this.value)">
+        <input placeholder="Exercise" value="${iso.name||''}"
+          oninput="setIso('${lift}',${i},'name',this.value)">
         <div class="row">
-          <input placeholder="Sets" type="number" value="${i.sets||''}" oninput="isoInput('${lift}',${idx},'sets',this.value)">
-          <input placeholder="Reps" type="number" value="${i.reps||''}" oninput="isoInput('${lift}',${idx},'reps',this.value)">
-          <input placeholder="Weight" type="number" value="${i.weight||''}" oninput="isoInput('${lift}',${idx},'weight',this.value)">
+          <input placeholder="Sets" value="${iso.sets||''}"
+            oninput="setIso('${lift}',${i},'sets',this.value)">
+          <input placeholder="Reps" value="${iso.reps||''}"
+            oninput="setIso('${lift}',${i},'reps',this.value)">
+          <input placeholder="Weight" value="${iso.weight||''}"
+            class="${weightClass(lift,iso.weight,prev?.isolations?.[i]?.weight)}"
+            oninput="setIso('${lift}',${i},'weight',this.value)">
         </div>
       </div>`;
     });
 
-    c.innerHTML+=`
-      <textarea maxlength="260" oninput="note('${lift}',this.value)">${s.notes}</textarea>
+    card.innerHTML+=`
+      <textarea maxlength="260" oninput="s.notes=this.value">${s.notes}</textarea>
       <button onclick="complete('${lift}')">Complete Session</button>
+      ${s.completed?`<button onclick="unlock('${lift}')">Unlock</button>`:''}
     `;
 
-    row.append(p,c);
-    card.append(row);
-    wrap.append(card);
+    container.append(card);
   });
 
   drawChart();
   save();
 }
 
-/* ---------------- INPUT LOGIC ---------------- */
-function mainInput(lift,i,f,v){
-  const s=db.sessions.find(x=>x.week===week&&x.lift===lift);
+/* ---------------- LOGIC ---------------- */
+function weightClass(lift,c,p){
+  if(!c) return '';
+  c=Number(c); p=Number(p);
+  if(!db.pbs[lift] || c>=db.pbs[lift]) return 'weight-pb';
+  if(c>p) return 'weight-up';
+  if(c<p) return 'weight-down';
+  return '';
+}
+
+function setMain(lift,i,f,v){
+  const s=getSession(lift);
   s.sets[i][f]=v;
 
-  /* GVT weight auto-fill */
-  if(s.type==='GVT' && f==='w' && i===0){
-    s.sets.forEach((x,idx)=>{ if(idx>0 && !x.w) x.w=v; });
+  /* AUTO COPY */
+  if(f==='w' && s.weekType==='GVT' && i===0){
+    for(let j=1;j<s.sets.length;j++)
+      if(!s.sets[j].w) s.sets[j].w=v;
   }
-
-  /* Non-GVT reps auto-fill */
-  if(s.type!=='GVT' && f==='r' && i===0){
-    s.sets.forEach((x,idx)=>{ if(idx>0 && !x.r) x.r=v; });
+  if(f==='r' && s.weekType!=='GVT' && i===0){
+    for(let j=1;j<s.sets.length;j++)
+      if(!s.sets[j].r) s.sets[j].r=v;
   }
 
   save(); render();
 }
 
-function isoInput(lift,i,f,v){
-  db.sessions.find(x=>x.week===week&&x.lift===lift).iso[i][f]=v;
+function setIso(l,i,f,v){
+  getSession(l).isolations[i][f]=v;
   save();
 }
 
-function note(lift,v){
-  db.sessions.find(x=>x.week===week&&x.lift===lift).notes=v;
-  save();
-}
-
-/* ---------------- COMPLETE ---------------- */
 function complete(lift){
-  const s=db.sessions.find(x=>x.week===week&&x.lift===lift);
+  const s=getSession(lift);
   s.completed=true;
 
-  const rm=session1RM(s);
-  if(!db.pbs[lift]||rm>db.pbs[lift]) db.pbs[lift]=rm;
+  const oneRM = s.weekType==='Peak'
+    ? Math.max(...s.sets.map(x=>Number(x.w)||0))
+    : heaviest1RM(s.sets);
 
-  db.isolations = db.isolations.filter(i=>!(i.week===week&&i.lift===lift));
-  db.isolations.push({week,lift,data:JSON.parse(JSON.stringify(s.iso))});
-
+  db.history.push({...s, oneRM});
+  db.pbs[lift]=Math.max(db.pbs[lift]||0,oneRM);
   save(); render();
 }
 
-/* ---------------- WEEKS ---------------- */
-function renderWeeks(){
-  const g=document.getElementById('weeks'); g.innerHTML='';
-  for(let i=1;i<=MAX_WEEKS;i++){
-    const b=document.createElement('button');
-    b.textContent=`W${i}`;
-    b.className='week-btn '+(i===week?'active':'');
-    b.onclick=()=>{week=i;render();};
-    g.append(b);
+function unlock(lift){
+  getSession(lift).completed=false;
+  render();
+}
+
+function changeWeek(d){
+  currentWeek=Math.max(1,currentWeek+d);
+  render();
+}
+
+function resetAll(){
+  if(confirm('Delete all data?')){
+    localStorage.clear();
+    location.reload();
   }
 }
 
 /* ---------------- CHART ---------------- */
 let chart;
 function drawChart(){
-  if(chart) chart.destroy();
   const ctx=document.getElementById('chart');
+  if(chart) chart.destroy();
 
-  let global=0;
   const data=lifts.map(l=>{
-    return Array.from({length:MAX_WEEKS},(_,i)=>{
-      const s=db.sessions.find(x=>x.week===i+1&&x.lift===l&&x.completed);
-      if(s){
-        const rm=session1RM(s);
-        if(rm>global) global=rm;
-        return rm;
-      }
-      return null;
-    });
+    return db.history.filter(h=>h.lift===l).map(h=>h.oneRM);
   });
-
-  document.getElementById('globalMax').textContent=global||'—';
 
   chart=new Chart(ctx,{
     type:'line',
     data:{
-      labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
+      labels:data[0].map((_,i)=>i+1),
       datasets:lifts.map((l,i)=>({
-        label:l,
-        data:data[i],
-        borderWidth:2,
-        fill:false
+        label:l,data:data[i],borderWidth:2
       }))
     }
   });
+
+  document.getElementById('maxBox').textContent =
+    'Highest 1RM achieved: '+
+    Math.max(...db.history.map(h=>h.oneRM||0),0);
 }
 
-/* ---------------- NAV ---------------- */
-function navWeek(d){week=Math.max(1,Math.min(MAX_WEEKS,week+d));render();}
-function resetAll(){
-  if(confirm('Delete all data?')){
-    db={sessions:[],isolations:[],pbs:{}};
-    week=1; save(); render();
-  }
-}
+/* ---------------- DROPDOWNS ---------------- */
+cycle.onchange = weekType.onchange = ()=>{
+  lifts.forEach(l=>{
+    const s=getSession(l);
+    if(!s.completed){
+      s.cycle=cycle.value;
+      s.weekType=weekType.value;
+      s.sets=[];
+    }
+  });
+  render();
+};
 
 render();
 </script>

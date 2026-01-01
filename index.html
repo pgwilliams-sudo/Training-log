@@ -118,13 +118,9 @@ function render(){
     const prevMain=prevEquivalent(lift,ses.weekType,ses.cycle);
     const prevIso=prevIsolation(lift);
 
-    // Auto-copy first weight or rep
     ses.sets = Array.from({length:setCount},(_,i)=>{
       const prevW = ses.sets[i]?.w || '';
       const prevR = ses.sets[i]?.r || (fixedReps||'');
-      // Auto-copy logic
-      if(i>0 && gvt && prevW && !ses.sets[i]?.w) return {w:prevW,r:prevR};
-      if(i>0 && !gvt && prevR && !ses.sets[i]?.r) return {w:prevW,r:prevR};
       return {w:prevW,r:prevR};
     });
 
@@ -203,10 +199,30 @@ function render(){
   save();
 }
 
-/* ---------------- SETTERS ---------------- */
-function setMain(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).sets[i][f]=v; save(); }
-function setIso(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save(); }
-function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(); }
+/* ---------------- SETTERS WITH AUTO-COPY ---------------- */
+function setMain(l,i,f,v){
+  const ses=db.lifts[l].find(s=>s.week===currentWeek);
+  if(!ses || ses.completed) return;
+  ses.sets[i][f]=v;
+
+  const gvt=ses.weekType==='GVT';
+  const fixedReps=gvt?(ses.cycle==='Strength'?5:10):null;
+
+  // Auto-copy logic: only for main lifts
+  if(i===0){
+    if(gvt && f==='w'){ // copy first weight to remaining 9 sets
+      ses.sets.slice(1).forEach(s=>{ if(!s.w) s.w=v; });
+    }
+    if(!gvt && f==='r'){ // copy first rep to remaining sets
+      ses.sets.slice(1).forEach(s=>{ if(!s.r) s.r=v; });
+    }
+  }
+
+  save();
+  render();
+}
+function setIso(l,i,f,v){ const ses=db.lifts[l].find(s=>s.week===currentWeek); if(!ses || ses.completed) return; ses.isolations[i][f]=v; save(); render(); }
+function setNotes(l,v){ const ses=db.lifts[l].find(s=>s.week===currentWeek); if(!ses || ses.completed) return; ses.notes=v; save(); }
 
 /* ---------------- COMPLETE ---------------- */
 function complete(lift){
@@ -266,24 +282,14 @@ function drawChart(){
         label:l,
         data:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
-          return s ? Math.max(...s.sets.map(ss=>ss.w)) : null; // heaviest weight
+          return s ? Math.max(...s.sets.map(s=>calc1RM(s.w,s.r))) : null; // max for chart
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
         fill:false,
-        pointRadius:10,
-        pointBackgroundColor: function(ctx){
-          const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
-          if(!s) return '#000';
-          if(['Mini-Peak','Peak'].includes(s.weekType) && Math.max(...s.sets.map(ss=>ss.w))===Math.max(...s.sets.map(ss=>ss.w))) return '#fde68a';
-          return '#000';
-        }
+        pointRadius:5
       }))
     },
-    options:{
-      responsive:true,
-      plugins:{legend:{position:'top'}},
-      elements:{point:{radius:10}}
-    }
+    options:{responsive:true,plugins:{legend:{position:'top'}}}
   });
 }
 

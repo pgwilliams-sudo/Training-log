@@ -109,14 +109,12 @@ function render(){
     const prevMain=prevEquivalent(lift,ses.weekType);
     const prevIso=prevIsolation(lift);
 
-    // MAIN SETS: initialise only if missing or wrong length
-if (!ses.sets || ses.sets.length !== setCount) {
-  const existing = ses.sets || [];
-  ses.sets = Array.from({ length: setCount }, (_, i) => ({
-    w: existing[i]?.w ?? '',
-    r: existing[i]?.r ?? ''
-  }));
-}
+    // MAIN SETS: preserve current values if exist
+    ses.sets = Array.from({length:setCount},(_,i)=>{
+      const prevW = ses.sets[i]?.w || '';
+      const prevR = ses.sets[i]?.r || '';
+      return {w:prevW,r:prevR};
+    });
 
     // ISOLATIONS: only copy previous week if current is empty
     for(let i=0;i<3;i++){
@@ -149,12 +147,8 @@ if (!ses.sets || ses.sets.length !== setCount) {
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} 
-          onblur="setMain('${lift}',${i},'w',this.value)" 
-          onkeydown="handleMainAutoCopy(event,'${lift}',${i},'w')">
-        <input type="number" value="${s.r}" ${ses.completed?'disabled':''} 
-          onblur="setMain('${lift}',${i},'r',this.value)" 
-          onkeydown="handleMainAutoCopy(event,'${lift}',${i},'r')">
+        <input type="number" value="${s.w}" ${ses.completed?'disabled':''} onblur="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" value="${s.r}" ${ses.completed?'disabled':''} onblur="setMain('${lift}',${i},'r',this.value)">
       </div>`;
     });
 
@@ -196,20 +190,6 @@ if (!ses.sets || ses.sets.length !== setCount) {
   save();
 }
 
-/* ---------------- AUTO-COPY ON TAB/ENTER ---------------- */
-function handleMainAutoCopy(e,lift,index,field){
-  if(e.key==='Enter' || e.key==='Tab'){
-    const ses=db.lifts[lift].find(s=>s.week===currentWeek);
-    const val=Number(ses.sets[index][field]);
-    if(isNaN(val)) return;
-    for(let i=index+1;i<ses.sets.length;i++){
-      ses.sets[i][field]=val;
-    }
-    save();
-    render();
-  }
-}
-
 /* ---------------- SETTERS ---------------- */
 function setMain(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).sets[i][f]=v; save(); }
 function setIso(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save(); }
@@ -219,6 +199,7 @@ function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(
 function complete(lift){
   const s=db.lifts[lift].find(x=>x.week===currentWeek);
   s.completed=true;
+  // Store isolations for next week
   db.isolations[lift]=db.isolations[lift].filter(x=>x.week!==currentWeek);
   db.isolations[lift].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
   save(); render();
@@ -273,7 +254,7 @@ function drawChart(){
         label:l,
         data:Array.from({length:MAX_WEEKS},(_,i)=>{
           const s=db.lifts[l].find(x=>x.week===i+1);
-          return s ? Math.max(...s.sets.map(set=>Number(set.w)||0)) : null;
+          return s ? Math.max(...s.sets.map(set=>calc1RM(set.w,set.r))) : null;
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
         fill:false,
@@ -282,7 +263,7 @@ function drawChart(){
           if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
             const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
             const prevMax=db.pbs[l]||0;
-            if(maxW>prevMax) return 9;
+            if(maxW>prevMax) return 9; // triple size for PB
           }
           return 3;
         },
@@ -301,6 +282,7 @@ function drawChart(){
   });
 }
 
+/* ---------------- DROP DOWN HANDLERS ---------------- */
 typeSel.onchange = () => {
   ['Squat','Bench','Deadlift'].forEach(lift=>{
     const ses=db.lifts[lift].find(s=>s.week===currentWeek);

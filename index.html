@@ -174,13 +174,22 @@ function createSession(lift, week, type){
     db.lifts[lift].push(ses);
   } else ses.weekType=type;
 
-  const count=type==='GVT'?10:5;
-  ses.sets=Array.from({length:count},(_,i)=>ses.sets[i]||{w:'',r:''});
-
-  if(ses.isolations.length<3){
-    const p=prevIsolation(lift,week);
-    ses.isolations=p?p.isolations.map(i=>({...i})):Array.from({length:3},()=>({}));
+  if(!ses.completed){
+  const count = type === 'GVT' ? 10 : 5;
+  if(ses.sets.length !== count){
+    ses.sets = Array.from(
+      { length: count },
+      (_, i) => ses.sets[i] || { w:'', r:'' }
+    );
   }
+}
+
+  if(!ses.completed && ses.isolations.length < 3){
+  const p = prevIsolation(lift, week);
+  ses.isolations = p
+    ? p.isolations.map(i=>({...i}))
+    : Array.from({length:3},()=>({}));
+}
   return ses;
 }
 
@@ -258,14 +267,15 @@ function render(){
       curr.innerHTML+=`
       <div class="iso">
         <input value="${i.name||''}" onblur="i.name=this.value;saveDB()">
-        <input type="number" value="${i.sets||''}" onblur="i.sets=this.value;saveDB()">
-        <input type="number" value="${i.reps||''}" onblur="i.reps=this.value;saveDB()">
-        <input type="number" value="${i.weight||''}" onblur="i.weight=this.value;saveDB()">
+        <input type="number" placeholder="sets" value="${i.sets||''}" onblur="i.sets=this.value;saveDB()">
+        <input type="number" placeholder="reps" value="${i.reps||''}" onblur="i.reps=this.value;saveDB()">
+        <input type="number" placeholder="weight" value="${i.weight||''}" onblur="i.weight=this.value;saveDB()">
       </div>`;
     });
 
     curr.innerHTML+=`
-    <textarea onblur="s.notes=this.value;saveDB()">${s.notes}</textarea>
+    <textarea placeholder="Notes" maxlength="260"
+  onblur="s.notes=this.value;saveDB()">${s.notes}</textarea>
     <button onclick="${s.completed?`editSession('${lift}',${currentWeek})`:`completeSession('${lift}',${currentWeek});render()`}">
       ${s.completed?'Edit Session':'Complete Session'}
     </button>`;

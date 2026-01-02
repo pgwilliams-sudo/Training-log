@@ -140,6 +140,13 @@ function completeSession(lift, week){
   saveDB();
 }
 
+function editSession(lift, week){
+  const ses = db.lifts[lift].find(s=>s.week===week);
+  ses.completed = false;
+  saveDB();
+  render();
+}
+
 function updateMain(lift, week, idx, field, value){
   const s = db.lifts[lift].find(s=>s.week===week);
   s.sets[idx] = {...s.sets[idx], [field]: value};
@@ -177,8 +184,9 @@ function render(){
     card.innerHTML=`<h3>${lift}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
+    // ----------------- PREVIOUS BOX -----------------
     const prev = document.createElement('div');
-    prev.className='prev';
+    prev.className = 'prev';
     prev.innerHTML = '<strong>Previous</strong><br>';
 
     // Main sets from last equivalent week
@@ -201,7 +209,7 @@ function render(){
       prev.innerHTML += `${prevMain.notes}<br>`;
     }
 
-    // Current sets
+    // ----------------- CURRENT SESSION -----------------
     const curr = document.createElement('div'); curr.className='curr';
     ses.sets.forEach((s,i)=>{
       curr.innerHTML += `
@@ -223,10 +231,14 @@ function render(){
       </div>`;
     });
 
-    curr.innerHTML+=`
-      <textarea placeholder="Notes" maxlength="260" onblur="updateNotes('${lift}',${currentWeek},this.value)">${ses.notes}</textarea>
-      <button onclick="completeSession('${lift}',${currentWeek}); render();">Complete Session</button>
-    `;
+    // Complete / Edit Session Button
+    if(ses.completed){
+      curr.innerHTML += `<button onclick="editSession('${lift}',${currentWeek})">Edit Session</button>`;
+      curr.querySelectorAll('input, textarea').forEach(inp => inp.disabled = true);
+    } else {
+      curr.innerHTML += `<button onclick="completeSession('${lift}',${currentWeek}); render();">Complete Session</button>`;
+      curr.querySelectorAll('input, textarea').forEach(inp => inp.disabled = false);
+    }
 
     row.append(prev,curr);
     card.append(row);

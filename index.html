@@ -108,15 +108,13 @@ function prevIsolation(lift, week){
 function createSession(lift, week, type){
   let ses = db.lifts[lift].find(s=>s.week===week);
   if(!ses){
-    // New session
     ses = {week, weekType:type, sets:[], isolations:[], notes:'', completed:false};
     db.lifts[lift].push(ses);
   } else {
-    // Update weekType if dropdown changed
     ses.weekType = type;
   }
 
-  // Adjust sets length according to type
+  // Adjust sets length
   const expectedSets = type === 'GVT' ? 10 : 5;
   if(ses.sets.length !== expectedSets){
     ses.sets = Array.from({length:expectedSets}, (_,i) => ses.sets[i] || {w:'', r:''});
@@ -171,20 +169,42 @@ function render(){
   ['Squat','Bench','Deadlift'].forEach(lift=>{
     const ses = createSession(lift, currentWeek, typeSel.value);
 
-    const prevMain = prevSession(lift, ses.weekType);
+    const prevMain = prevSession(lift, ses.weekType);    // last session of same type
+    const prevIso = prevIsolation(lift, currentWeek);   // isolation from previous week
 
     const card = document.createElement('div');
     card.className='card session'+(ses.completed?' locked':'');
     card.innerHTML=`<h3>${lift}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
-    const prev=document.createElement('div'); prev.className='prev';
-    prev.innerHTML='<strong>Previous</strong><br>';
-    if(prevMain) prevMain.sets.forEach(s=>prev.innerHTML+=`${s.w}×${s.r}<br>`);
+    const prev = document.createElement('div');
+    prev.className='prev';
+    prev.innerHTML = '<strong>Previous</strong><br>';
 
-    const curr=document.createElement('div'); curr.className='curr';
+    // Main sets from last equivalent week
+    if(prevMain){
+      prev.innerHTML += '<em>Main:</em><br>';
+      prevMain.sets.forEach(s => prev.innerHTML += `${s.w}×${s.r}<br>`);
+    }
+
+    // Isolation exercises from previous week
+    if(prevIso && prevIso.isolations.length){
+      prev.innerHTML += '<em>Isolation:</em><br>';
+      prevIso.isolations.forEach(i=>{
+        if(i.name) prev.innerHTML += `${i.name} ${i.sets||''}×${i.reps||''}@${i.weight||''}<br>`;
+      });
+    }
+
+    // Notes from last equivalent week
+    if(prevMain && prevMain.notes){
+      prev.innerHTML += '<em>Notes:</em><br>';
+      prev.innerHTML += `${prevMain.notes}<br>`;
+    }
+
+    // Current sets
+    const curr = document.createElement('div'); curr.className='curr';
     ses.sets.forEach((s,i)=>{
-      curr.innerHTML+=`
+      curr.innerHTML += `
       <div class="set">
         ${i+1}
         <input type="number" placeholder="Weight" value="${s.w}" onblur="updateMain('${lift}',${currentWeek},${i},'w',this.value)">
@@ -192,7 +212,7 @@ function render(){
       </div>`;
     });
 
-    curr.innerHTML+='<strong>Isolation</strong>';
+    curr.innerHTML += '<strong>Isolation</strong>';
     ses.isolations.forEach((iso,i)=>{
       curr.innerHTML+=`
       <div class="iso">

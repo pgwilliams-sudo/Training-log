@@ -54,16 +54,20 @@ button{cursor:pointer;}
       <option>Peak</option>
     </select>
 
+    <!-- Backup/Import/Export -->
     <button onclick="exportBackup()">Export</button>
     <label>
       <input type="file" hidden onchange="importBackup(event)">
       <button type="button">Import</button>
     </label>
 
+    <!-- New Cycle / Factory Reset -->
     <button onclick="startNewCycle()">New Cycle</button>
     <button onclick="factoryReset()" style="background:#ef4444;color:#fff">Factory Reset</button>
+
     <button onclick="toggleStats()">Cycle Stats</button>
   </div>
+
   <div id="weekGrid" class="week-grid"></div>
 </div>
 
@@ -111,29 +115,32 @@ function importBackup(e){
 }
 
 /* ---------------- CYCLE ---------------- */
-function startNewCycle(){ if(confirm(`Start new cycle? (Cycle ${cycle} will be archived)`)){ cycle++; currentWeek=1; saveDB(); render(); } }
-function factoryReset(){ if(!confirm('FACTORY RESET\n\nThis deletes ALL data.')) return; if(!confirm('Are you absolutely sure?')) return; localStorage.clear(); location.reload(); }
+function startNewCycle(){ 
+  if(confirm(`Start new cycle? (Cycle ${cycle} will be archived)`)){ cycle++; currentWeek=1; saveDB(); render(); } 
+}
+function factoryReset(){ 
+  if(!confirm('FACTORY RESET\n\nThis deletes ALL data.')) return; 
+  if(!confirm('Are you absolutely sure?')) return; 
+  localStorage.clear(); location.reload(); 
+}
 
 /* ---------------- HELPERS ---------------- */
 function prevSession(lift,type){ return db.lifts[lift].filter(x=>x.completed && x.weekType===type).pop() || null; }
 function prevIsolation(lift, week){ return db.isolations[lift].find(s=>s.week===week-1) || null; }
 function isWeekLocked(week){ return ['Squat','Bench','Deadlift'].some(lift=>db.lifts[lift].find(s=>s.week===week)?.completed); }
 
-/* ---------------- SESSION CREATION ---------------- */
+/* ---------------- SESSION CREATION (working version) ---------------- */
 function createSession(lift, week, type){
   let ses=db.lifts[lift].find(s=>s.week===week);
   if(!ses){ ses={week,weekType:type,sets:[],isolations:[],notes:'',completed:false}; db.lifts[lift].push(ses);}
   else ses.weekType=type;
 
-  if(!ses.completed){
-    const expectedCount=type==='GVT'?10:5;
-    for(let i=0;i<expectedCount;i++){ if(!ses.sets[i]) ses.sets[i]={w:'',r:''}; }
-    ses.sets.length=expectedCount;
+  const expectedSets = type==='GVT'?10:5;
+  if(ses.sets.length !== expectedSets) ses.sets = Array.from({length:expectedSets}, (_,i)=> ses.sets[i] || {w:'', r:''});
 
-    if(ses.isolations.length<3){
-      const prev=prevIsolation(lift,week);
-      ses.isolations=prev?prev.isolations.map(i=>({...i})):Array.from({length:3},()=>({}));
-    }
+  if(ses.isolations.length < 3){
+    const prev = prevIsolation(lift, week);
+    ses.isolations = prev ? prev.isolations.map(i=>({...i})) : Array.from({length:3}, ()=>({}));
   }
   return ses;
 }
@@ -160,7 +167,7 @@ function checkCycleComplete(){
 function render(){
   document.getElementById('weekTitle').textContent=`Week ${currentWeek} (Cycle ${cycle})`;
   renderWeekButtons();
-  typeSel.disabled=isWeekLocked(currentWeek);
+  typeSel.disabled = isWeekLocked(currentWeek);
 
   const container=document.getElementById('sessions'); container.innerHTML='';
 
@@ -169,7 +176,7 @@ function render(){
     const sessionObj=db.lifts[lift].find(sess=>sess.week===currentWeek);
 
     const card=document.createElement('div'); card.className='card session'+(s.completed?' locked':'');
-    card.innerHTML=`<h3>${lift}</h3>`; 
+    card.innerHTML=`<h3>${lift}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
     const prev=document.createElement('div'); prev.className='prev'; prev.innerHTML='<strong>Previous</strong><br>';
@@ -179,12 +186,12 @@ function render(){
     const curr=document.createElement('div'); curr.className='curr';
 
     // MAIN SETS
-    sessionObj.sets.forEach((_,i)=>{
+    sessionObj.sets.forEach((set,i)=>{
       const div=document.createElement('div'); div.className='set'; div.textContent=i+1;
-      const w=document.createElement('input'); w.type='number'; w.placeholder='Weight'; w.value=sessionObj.sets[i].w;
-      w.addEventListener('blur',()=>{ sessionObj.sets[i].w=w.value; saveDB(); });
-      const r=document.createElement('input'); r.type='number'; r.placeholder='Reps'; r.value=sessionObj.sets[i].r;
-      r.addEventListener('blur',()=>{ sessionObj.sets[i].r=r.value; saveDB(); });
+      const w=document.createElement('input'); w.type='number'; w.placeholder='Weight'; w.value=set.w;
+      w.addEventListener('blur',()=>{ set.w=w.value; saveDB(); });
+      const r=document.createElement('input'); r.type='number'; r.placeholder='Reps'; r.value=set.r;
+      r.addEventListener('blur',()=>{ set.r=r.value; saveDB(); });
       div.append(w,r); curr.appendChild(div);
     });
 
@@ -193,13 +200,13 @@ function render(){
     sessionObj.isolations.forEach((iso,idx)=>{
       const div=document.createElement('div'); div.className='iso';
       const name=document.createElement('input'); name.placeholder='Exercise'; name.value=iso.name||'';
-      name.addEventListener('blur',()=>{ sessionObj.isolations[idx].name=name.value; saveDB(); });
+      name.addEventListener('blur',()=>{ iso.name=name.value; saveDB(); });
       const sets=document.createElement('input'); sets.type='number'; sets.placeholder='Sets'; sets.value=iso.sets||'';
-      sets.addEventListener('blur',()=>{ sessionObj.isolations[idx].sets=sets.value; saveDB(); });
+      sets.addEventListener('blur',()=>{ iso.sets=sets.value; saveDB(); });
       const reps=document.createElement('input'); reps.type='number'; reps.placeholder='Reps'; reps.value=iso.reps||'';
-      reps.addEventListener('blur',()=>{ sessionObj.isolations[idx].reps=reps.value; saveDB(); });
+      reps.addEventListener('blur',()=>{ iso.reps=reps.value; saveDB(); });
       const weight=document.createElement('input'); weight.type='number'; weight.placeholder='Weight'; weight.value=iso.weight||'';
-      weight.addEventListener('blur',()=>{ sessionObj.isolations[idx].weight=weight.value; saveDB(); });
+      weight.addEventListener('blur',()=>{ iso.weight=weight.value; saveDB(); });
       div.append(name,sets,reps,weight); curr.appendChild(div);
     });
 

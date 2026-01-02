@@ -6,7 +6,10 @@
 <title>Training Logger</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<!-- PWA META -->
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <meta name="theme-color" content="#3b82f6">
 
 <style>
@@ -63,6 +66,7 @@ textarea{resize:none;width:100%;}
 <!-- MAIN LOGGER -->
 <div id="loggerView">
   <div id="sessions"></div>
+
   <div class="card">
     <canvas id="rmChart"></canvas>
   </div>
@@ -91,12 +95,10 @@ function save(){ localStorage.setItem('db',JSON.stringify(db)); }
 
 /* ---------------- HELPERS ---------------- */
 function calc1RM(w,r){ return r>0 ? Math.round(w*(1+r/30)) : 0; }
-
 function prevEquivalent(lift,type){
   const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type);
   return s.length ? s[s.length-1] : null;
 }
-
 function prevIsolation(lift){
   return db.isolations[lift].find(s=>s.week===currentWeek-1) || null;
 }
@@ -212,26 +214,20 @@ function setMain(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).sets[i][f]=
 function setIso(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save(); }
 function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(); }
 function complete(l){ 
-  const s=db.lifts[l].find(s=>s.week===currentWeek);
-  s.completed=true;
-  db.isolations[l].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(s.isolations))});
-  render();
+  const ses=db.lifts[l].find(s=>s.week===currentWeek);
+  ses.completed=true; 
+  db.isolations[l].push({week:currentWeek,isolations:JSON.parse(JSON.stringify(ses.isolations))}); 
+  render(); 
 }
 function changeWeek(d){ currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); render(); }
-
-function resetAll(){
-  if(confirm('Delete all data?')){
-    localStorage.clear(); location.reload();
-  }
-}
-
+function resetAll(){ if(confirm('Delete all data?')){ localStorage.clear();location.reload(); } }
 function renderWeekButtons(){
-  const g=document.getElementById('weekGrid'); g.innerHTML='';
+  const g=document.getElementById('weekGrid');g.innerHTML='';
   for(let i=1;i<=MAX_WEEKS;i++){
     const b=document.createElement('button');
     b.textContent=`W${i}`;
     b.className='week-btn '+(i===currentWeek?'active':'inactive');
-    b.onclick=()=>{currentWeek=i; render();};
+    b.onclick=()=>{currentWeek=i;render();};
     g.append(b);
   }
 }
@@ -260,10 +256,11 @@ function drawChart(){
 typeSel.onchange=()=>{ render(); };
 render();
 
-/* ---------------- REGISTER SERVICE WORKER ---------------- */
+/* ---------------- SERVICE WORKER ---------------- */
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js')
-    .then(()=>console.log('Service Worker Registered'));
+    .then(reg => console.log('Service Worker registered', reg))
+    .catch(err => console.log('Service Worker failed', err));
 }
 </script>
 </body>

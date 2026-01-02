@@ -93,6 +93,7 @@ function render(){
   document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
   renderWeekButtons();
   const container=document.getElementById('sessions');container.innerHTML='';
+
   ['Squat','Bench','Deadlift'].forEach(lift=>{
     let ses=db.lifts[lift].find(s=>s.week===currentWeek);
     if(!ses){
@@ -114,17 +115,24 @@ function render(){
     card.innerHTML=`<h3>${lift}</h3>`;
     const row=document.createElement('div');row.className='row';
 
+    // Previous session box
     const prev=document.createElement('div');prev.className='prev';
     prev.innerHTML='<strong>Previous</strong><br>';
-    if(prevMain) prevMain.sets.forEach(s=>prev.innerHTML+=`${s.r}×${s.w}<br>`);
+    if(prevMain){
+      prevMain.sets.forEach(s=>prev.innerHTML+=`${s.r}×${s.w}<br>`);
+      prevMain.isolations.forEach(i=>{
+        if(i.name) prev.innerHTML+=`<span class="small">${i.name} ${i.sets}×${i.reps}@${i.weight}</span><br>`;
+      });
+    }
 
+    // Current session box
     const curr=document.createElement('div');curr.className='curr';
     ses.sets.forEach((s,i)=>{
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" placeholder="Reps" value="${s.r}" onblur="setMain('${lift}',${i},'r',this.value)">
-        <input type="number" placeholder="Weight" value="${s.w}" onblur="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" placeholder="Reps" class="reps" value="${s.r}" onblur="setMain('${lift}',${i},'r',this.value)">
+        <input type="number" placeholder="Weight" class="weight" value="${s.w}" onblur="setMain('${lift}',${i},'w',this.value)">
       </div>`;
     });
 
@@ -183,13 +191,18 @@ function toggleStats(){
   document.getElementById('statsView').classList.toggle('hidden');
   if(!document.getElementById('statsView').classList.contains('hidden')) renderStats();
 }
+
 function renderStats(){
   const c=document.getElementById('statsContent');c.innerHTML='';
   for(let w=1;w<=MAX_WEEKS;w++){
     const div=document.createElement('div');div.className='stats-week';div.innerHTML=`<strong>Week ${w}</strong>`;
     ['Squat','Bench','Deadlift'].forEach(l=>{
       const s=db.lifts[l].find(x=>x.week===w);
-      if(s) div.innerHTML+=`<div class="stats-lift"><strong>${l}</strong> (${s.weekType})<br>${s.sets.map(x=>`${x.r}×${x.w}`).join(', ')}<br>${s.isolations.map(i=>i.name?`${i.name} ${i.sets}×${i.reps}@${i.weight}`:'').join('<br>')}</div>`;
+      if(s){
+        let setsText = s.sets.map(x=>`${x.r}×${x.w}`).join(', ');
+        let isoText = s.isolations.filter(i=>i.name).map(i=>`${i.name} ${i.sets}×${i.reps}@${i.weight}`).join('<br>');
+        div.innerHTML+=`<div class="stats-lift"><strong>${l}</strong> (${s.weekType})<br><em>Main Sets:</em> ${setsText}<br><em>Isolation:</em> ${isoText||'—'}</div>`;
+      }
     });
     c.append(div);
   }
@@ -217,16 +230,16 @@ function drawChart(){
         }),
         borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
         fill:false,
-        pointRadius: function(context){
-          const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
+        pointRadius:function(ctx){
+          const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
           if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
             const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
             if(maxW===db.pbs[l]) return 9;
           }
           return 3;
         },
-        pointBackgroundColor: function(context){
-          const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
+        pointBackgroundColor:function(ctx){
+          const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
           if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
             const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
             if(maxW===db.pbs[l]) return '#fde68a';

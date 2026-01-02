@@ -131,13 +131,7 @@ function factoryReset(){
 /* ---------------- HELPERS ---------------- */
 function prevSession(lift,type){ const s=db.lifts[lift].filter(x=>x.completed && x.weekType===type); return s.length?s[s.length-1]:null; }
 function prevIsolation(lift, week){ return db.isolations[lift].find(s=>s.week===week-1) || null; }
-function isWeekLocked(week){
-  // Returns true if any lift in the current week is completed
-  return ['Squat','Bench','Deadlift'].some(lift => {
-    const s = db.lifts[lift].find(sess => sess.week === week);
-    return s?.completed;
-  });
-}
+function isWeekLocked(week){ return ['Squat','Bench','Deadlift'].some(lift=>db.lifts[lift].find(s=>s.week===week)?.completed); }
 
 /* ---------------- SESSION CREATION ---------------- */
 function createSession(lift, week, type){
@@ -178,9 +172,11 @@ function checkCycleComplete(){
 
 /* ---------------- RENDER ---------------- */
 function render(){
-  document.getElementById('weekTitle').textContent = `Week ${currentWeek} (Cycle ${cycle})`;
-// LOCK week type if any session is completed
-typeSel.disabled = isWeekLocked(currentWeek);
+  document.getElementById('weekTitle').textContent=`Week ${currentWeek} (Cycle ${cycle})`;
+  renderWeekButtons();
+
+  // LOCK week type dropdown if any lift completed
+  typeSel.disabled = isWeekLocked(currentWeek);
 
   const container=document.getElementById('sessions'); container.innerHTML='';
 
@@ -199,7 +195,7 @@ typeSel.disabled = isWeekLocked(currentWeek);
 
     const curr=document.createElement('div'); curr.className='curr';
 
-    // Main sets
+    // MAIN SETS
     s.sets.forEach((set,i)=>{
       const div=document.createElement('div'); div.className='set'; div.textContent=i+1;
       const w=document.createElement('input'); w.type='number'; w.placeholder='Weight'; w.value=set.w;
@@ -209,7 +205,7 @@ typeSel.disabled = isWeekLocked(currentWeek);
       div.append(w,r); curr.appendChild(div);
     });
 
-    // Isolations
+    // ISOLATIONS
     curr.innerHTML+='<strong>Isolation</strong>';
     s.isolations.forEach((iso,idx)=>{
       const div=document.createElement('div'); div.className='iso';
@@ -224,12 +220,12 @@ typeSel.disabled = isWeekLocked(currentWeek);
       div.append(name,sets,reps,weight); curr.appendChild(div);
     });
 
-    // Notes
+    // NOTES
     const note=document.createElement('textarea'); note.placeholder='Notes'; note.value=s.notes;
     note.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).notes=note.value; saveDB(); });
     curr.appendChild(note);
 
-    // Complete/Edit button
+    // BUTTON
     const btn=document.createElement('button');
     if(s.completed){ btn.textContent='Edit Session'; btn.onclick=()=>editSession(lift,currentWeek); }
     else{ btn.textContent='Complete Session'; btn.onclick=()=>completeSession(lift,currentWeek); }
@@ -243,14 +239,7 @@ typeSel.disabled = isWeekLocked(currentWeek);
 
 /* ---------------- NAV ---------------- */
 function changeWeek(d){ currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); render(); }
-function renderWeekButtons(){
-  const g=document.getElementById('weekGrid'); g.innerHTML='';
-  for(let i=1;i<=MAX_WEEKS;i++){
-    const b=document.createElement('button'); b.textContent=`W${i}`;
-    b.className='week-btn '+(i===currentWeek?'active':'inactive');
-    b.onclick=()=>{currentWeek=i;render();}; g.appendChild(b);
-  }
-}
+function renderWeekButtons(){ const g=document.getElementById('weekGrid'); g.innerHTML=''; for(let i=1;i<=MAX_WEEKS;i++){ const b=document.createElement('button'); b.textContent=`W${i}`; b.className='week-btn '+(i===currentWeek?'active':'inactive'); b.onclick=()=>{currentWeek=i;render();}; g.appendChild(b); } }
 
 /* ---------------- STATS ---------------- */
 function toggleStats(){ document.getElementById('loggerView').classList.toggle('hidden'); document.getElementById('statsView').classList.toggle('hidden'); if(!document.getElementById('statsView').classList.contains('hidden')) renderStats(); }

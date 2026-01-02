@@ -122,8 +122,8 @@ function render(){
 
     const setCount=ses.weekType==='GVT'?10:5;
     ses.sets = Array.from({length:setCount},(_,i)=>({
-      w:ses.sets[i]?.w||'',
-      r:ses.sets[i]?.r||''
+      r:ses.sets[i]?.r||'',
+      w:ses.sets[i]?.w||''
     }));
 
     const prevMain=prevEquivalent(lift,ses.weekType);
@@ -150,8 +150,8 @@ function render(){
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" placeholder="Weight" value="${s.w}" onblur="setMain('${lift}',${i},'w',this.value)">
         <input type="number" placeholder="Reps" value="${s.r}" onblur="setMain('${lift}',${i},'r',this.value)">
+        <input type="number" placeholder="Weight" value="${s.w}" onblur="setMain('${lift}',${i},'w',this.value)">
       </div>`;
     });
 
@@ -259,7 +259,7 @@ function drawChart(){
             const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
             if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
               const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
-              if(maxW>db.pbs[l]) return 9; // gold PB point, 3x normal
+              if(maxW>db.pbs[l]) return 9;
             }
             return 3;
           },
@@ -267,7 +267,7 @@ function drawChart(){
             const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
             if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
               const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
-              if(maxW>db.pbs[l]) return '#fde68a'; // gold
+              if(maxW>db.pbs[l]) return '#fde68a';
             }
             return '#fff';
           }

@@ -8,7 +8,6 @@
 
 <!-- PWA META -->
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3b82f6">
@@ -58,8 +57,16 @@ button{cursor:pointer;}
       <option>Peak</option>
     </select>
 
+    <button onclick="exportBackup()">Export</button>
+    <label>
+      <input type="file" hidden onchange="importBackup(event)">
+      <button type="button">Import</button>
+    </label>
+
+    <button onclick="startNewCycle()">New Cycle</button>
+    <button onclick="factoryReset()" style="background:#ef4444;color:#fff">Factory Reset</button>
+
     <button onclick="toggleStats()">Cycle Stats</button>
-    <button onclick="resetAll()" style="background:#ef4444;color:#fff">Reset</button>
   </div>
 
   <div id="weekGrid" class="week-grid"></div>
@@ -68,7 +75,6 @@ button{cursor:pointer;}
 <!-- MAIN LOGGER -->
 <div id="loggerView">
   <div id="sessions"></div>
-
   <div class="card">
     <canvas id="rmChart"></canvas>
   </div>
@@ -86,6 +92,8 @@ button{cursor:pointer;}
 /* ---------------- DATABASE MODULE ---------------- */
 const MAX_WEEKS = 12;
 let currentWeek = 1;
+let cycle = Number(localStorage.getItem('cycle')) || 1;
+
 const typeSel = document.getElementById('weekType');
 
 let db = JSON.parse(localStorage.getItem('db')) || {
@@ -94,190 +102,190 @@ let db = JSON.parse(localStorage.getItem('db')) || {
   pbs:{Squat:0,Bench:0,Deadlift:0}
 };
 
-function saveDB(){ localStorage.setItem('db', JSON.stringify(db)); }
+function saveDB(){
+  localStorage.setItem('db', JSON.stringify(db));
+  localStorage.setItem('cycle', cycle);
+}
 
+/* ---------------- BACKUP ---------------- */
+function exportBackup(){
+  const payload = { cycle, date:new Date().toISOString(), data:db };
+  const blob = new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'gymtrack-backup.json';
+  a.click();
+}
+
+function importBackup(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    const parsed = JSON.parse(r.result);
+    if(parsed.data){
+      db = parsed.data;
+      cycle = parsed.cycle || 1;
+      saveDB();
+      render();
+      alert('Backup imported');
+    }
+  };
+  r.readAsText(file);
+}
+
+/* ---------------- CYCLE CONTROLS ---------------- */
+function startNewCycle(){
+  if(confirm(`Start new cycle? (Cycle ${cycle} will be archived)`)){
+    cycle++;
+    currentWeek = 1;
+    saveDB();
+    render();
+  }
+}
+
+function factoryReset(){
+  if(!confirm('FACTORY RESET\n\nThis deletes ALL data.')) return;
+  if(!confirm('Are you absolutely sure?')) return;
+  localStorage.clear();
+  location.reload();
+}
+
+/* ---------------- HELPERS ---------------- */
 function prevSession(lift,type){
   const s=db.lifts[lift].filter(x=>x.completed && x.weekType===type);
   return s.length ? s[s.length-1] : null;
 }
-
 function prevIsolation(lift, week){
   return db.isolations[lift].find(s=>s.week===week-1) || null;
 }
-
-// ---------------- WEEK LOCK CHECK ----------------
 function isWeekLocked(week){
-  return ['Squat','Bench','Deadlift'].some(lift => {
-    const s = db.lifts[lift].find(s=>s.week===week);
+  return ['Squat','Bench','Deadlift'].some(lift=>{
+    const s=db.lifts[lift].find(s=>s.week===week);
     return s?.completed;
   });
 }
 
-/* ---------------- CREATE SESSION WITH DYNAMIC SET COUNT ---------------- */
+/* ---------------- SESSION LOGIC ---------------- */
 function createSession(lift, week, type){
-  let ses = db.lifts[lift].find(s=>s.week===week);
+  let ses=db.lifts[lift].find(s=>s.week===week);
   if(!ses){
-    ses = {week, weekType:type, sets:[], isolations:[], notes:'', completed:false};
+    ses={week,weekType:type,sets:[],isolations:[],notes:'',completed:false};
     db.lifts[lift].push(ses);
-  } else {
-    ses.weekType = type;
-  }
+  } else ses.weekType=type;
 
-  const expectedSets = type === 'GVT' ? 10 : 5;
-  if(ses.sets.length !== expectedSets){
-    ses.sets = Array.from({length:expectedSets}, (_,i) => ses.sets[i] || {w:'', r:''});
-  }
+  const count=type==='GVT'?10:5;
+  ses.sets=Array.from({length:count},(_,i)=>ses.sets[i]||{w:'',r:''});
 
-  if(ses.isolations.length < 3){
-    const prevIso = prevIsolation(lift, week);
-    ses.isolations = prevIso ? prevIso.isolations.map(i=>({...i})) : Array.from({length:3},()=>({}));
+  if(ses.isolations.length<3){
+    const p=prevIsolation(lift,week);
+    ses.isolations=p?p.isolations.map(i=>({...i})):Array.from({length:3},()=>({}));
   }
-
   return ses;
 }
 
 function completeSession(lift, week){
-  const ses = db.lifts[lift].find(s=>s.week===week);
-  ses.completed = true;
-  db.isolations[lift].push({week, isolations: ses.isolations.map(i=>({...i}))});
-  const maxW = Math.max(...ses.sets.map(s=>Number(s.w)||0));
-  if(maxW>db.pbs[lift]) db.pbs[lift] = maxW;
+  const s=db.lifts[lift].find(s=>s.week===week);
+  s.completed=true;
+  db.isolations[lift].push({week,isolations:s.isolations.map(i=>({...i}))});
+  const maxW=Math.max(...s.sets.map(x=>Number(x.w)||0));
+  if(maxW>db.pbs[lift]) db.pbs[lift]=maxW;
   saveDB();
+  checkCycleComplete();
 }
 
 function editSession(lift, week){
-  const ses = db.lifts[lift].find(s=>s.week===week);
-  ses.completed = false;
-  saveDB();
-  render();
+  db.lifts[lift].find(s=>s.week===week).completed=false;
+  saveDB(); render();
 }
 
-function updateMain(lift, week, idx, field, value){
-  const s = db.lifts[lift].find(s=>s.week===week);
-  s.sets[idx] = {...s.sets[idx], [field]: value};
-  saveDB();
+/* ---------------- CYCLE COMPLETE CHECK ---------------- */
+function checkCycleComplete(){
+  if(currentWeek!==12) return;
+  const done=['Squat','Bench','Deadlift'].every(l=>{
+    const s=db.lifts[l].find(x=>x.week===12);
+    return s && s.completed;
+  });
+  if(done){
+    setTimeout(()=>{
+      if(confirm(`Cycle ${cycle} complete. Send to backup?`)){
+        exportBackup();
+        cycle++;
+        currentWeek=1;
+        saveDB();
+        render();
+      }
+    },300);
+  }
 }
 
-function updateIso(lift, week, idx, field, value){
-  const s = db.lifts[lift].find(s=>s.week===week);
-  s.isolations[idx] = {...s.isolations[idx], [field]: value};
-  saveDB();
-}
-
-function updateNotes(lift, week, value){
-  const s = db.lifts[lift].find(s=>s.week===week);
-  s.notes = value;
-  saveDB();
-}
-
-/* ---------------- RENDER MODULE ---------------- */
+/* ---------------- RENDER ---------------- */
 function render(){
-  document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
+  document.getElementById('weekTitle').textContent=`Week ${currentWeek} (Cycle ${cycle})`;
   renderWeekButtons();
+  typeSel.disabled=isWeekLocked(currentWeek);
 
-  // Lock weekType dropdown if any session is completed
-  typeSel.disabled = isWeekLocked(currentWeek);
-
-  const container = document.getElementById('sessions');
-  container.innerHTML='';
+  const c=document.getElementById('sessions');
+  c.innerHTML='';
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
-    const ses = createSession(lift, currentWeek, typeSel.value);
+    const s=createSession(lift,currentWeek,typeSel.value);
+    const pMain=prevSession(lift,s.weekType);
+    const pIso=prevIsolation(lift,currentWeek);
 
-    const prevMain = prevSession(lift, ses.weekType);
-    const prevIso = prevIsolation(lift, currentWeek);
-
-    const card = document.createElement('div');
-    card.className='card session'+(ses.completed?' locked':'');
+    const card=document.createElement('div');
+    card.className='card session'+(s.completed?' locked':'');
     card.innerHTML=`<h3>${lift}</h3>`;
-    const row=document.createElement('div'); row.className='row';
+    const row=document.createElement('div');row.className='row';
 
-    // Previous box
-    const prev = document.createElement('div');
-    prev.className = 'prev';
-    prev.innerHTML = '<strong>Previous</strong><br>';
+    const prev=document.createElement('div');
+    prev.className='prev';
+    prev.innerHTML='<strong>Previous</strong><br>';
+    if(pMain){ pMain.sets.forEach(x=>prev.innerHTML+=`${x.w}×${x.r}<br>`); }
+    if(pIso){ pIso.isolations.forEach(i=>{ if(i.name) prev.innerHTML+=`${i.name} ${i.sets}×${i.reps}@${i.weight}<br>`; }); }
 
-    if(prevMain){
-      prev.innerHTML += '<em>Main:</em><br>';
-      prevMain.sets.forEach(s => prev.innerHTML += `${s.w}×${s.r}<br>`);
-    }
-
-    if(prevIso && prevIso.isolations.length){
-      prev.innerHTML += '<em>Isolation:</em><br>';
-      prevIso.isolations.forEach(i=>{
-        if(i.name) prev.innerHTML += `${i.name} ${i.sets||''}×${i.reps||''}@${i.weight||''}<br>`;
-      });
-    }
-
-    if(prevMain && prevMain.notes){
-      prev.innerHTML += '<em>Notes:</em><br>';
-      prev.innerHTML += `${prevMain.notes}<br>`;
-    }
-
-    // Current session
-    const curr = document.createElement('div'); curr.className='curr';
-    ses.sets.forEach((s,i)=>{
-      curr.innerHTML += `
-      <div class="set">
-        ${i+1}
-        <input type="number" placeholder="Weight" value="${s.w}" onblur="updateMain('${lift}',${currentWeek},${i},'w',this.value)">
-        <input type="number" placeholder="Reps" value="${s.r}" onblur="updateMain('${lift}',${currentWeek},${i},'r',this.value)">
+    const curr=document.createElement('div');curr.className='curr';
+    s.sets.forEach((x,i)=>{
+      curr.innerHTML+=`
+      <div class="set">${i+1}
+        <input type="number" value="${x.w}" onblur="s.sets[${i}].w=this.value;saveDB()">
+        <input type="number" value="${x.r}" onblur="s.sets[${i}].r=this.value;saveDB()">
       </div>`;
     });
 
-    curr.innerHTML += '<strong>Isolation</strong>';
-    ses.isolations.forEach((iso,i)=>{
+    curr.innerHTML+='<strong>Isolation</strong>';
+    s.isolations.forEach((i,idx)=>{
       curr.innerHTML+=`
       <div class="iso">
-        <input placeholder="Exercise" value="${iso.name||''}" onblur="updateIso('${lift}',${currentWeek},${i},'name',this.value)">
-        <input placeholder="Sets" type="number" value="${iso.sets||''}" onblur="updateIso('${lift}',${currentWeek},${i},'sets',this.value)">
-        <input placeholder="Reps" type="number" value="${iso.reps||''}" onblur="updateIso('${lift}',${currentWeek},${i},'reps',this.value)">
-        <input placeholder="Weight" type="number" value="${iso.weight||''}" onblur="updateIso('${lift}',${currentWeek},${i},'weight',this.value)">
+        <input value="${i.name||''}" onblur="i.name=this.value;saveDB()">
+        <input type="number" value="${i.sets||''}" onblur="i.sets=this.value;saveDB()">
+        <input type="number" value="${i.reps||''}" onblur="i.reps=this.value;saveDB()">
+        <input type="number" value="${i.weight||''}" onblur="i.weight=this.value;saveDB()">
       </div>`;
     });
 
-    // Notes textarea
-    curr.innerHTML += `
-    <textarea placeholder="Notes" maxlength="260" 
-      onblur="updateNotes('${lift}',${currentWeek},this.value)">${ses.notes}</textarea>`;
-
-    // Complete/Edit button + input lock
-    if(ses.completed){
-      curr.innerHTML += `<button onclick="editSession('${lift}',${currentWeek})">Edit Session</button>`;
-      curr.querySelectorAll('input, textarea').forEach(inp => inp.disabled = true);
-    } else {
-      curr.innerHTML += `<button onclick="completeSession('${lift}',${currentWeek}); render();">Complete Session</button>`;
-      curr.querySelectorAll('input, textarea').forEach(inp => inp.disabled = false);
-    }
+    curr.innerHTML+=`
+    <textarea onblur="s.notes=this.value;saveDB()">${s.notes}</textarea>
+    <button onclick="${s.completed?`editSession('${lift}',${currentWeek})`:`completeSession('${lift}',${currentWeek});render()`}">
+      ${s.completed?'Edit Session':'Complete Session'}
+    </button>`;
 
     row.append(prev,curr);
     card.append(row);
-    container.append(card);
+    c.append(card);
   });
 
   drawChart();
 }
 
-/* ---------------- DROPDOWN CHANGE ---------------- */
-typeSel.onchange = () => {
-  if(!typeSel.disabled) render();
-};
-
-/* ---------------- NAV ---------------- */
-function changeWeek(d){ 
-  currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); 
-  render(); 
-}
-function resetAll(){ 
-  if(confirm('Delete all data?')){ localStorage.clear(); location.reload(); } 
-}
+function changeWeek(d){ currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); render(); }
 function renderWeekButtons(){
   const g=document.getElementById('weekGrid'); g.innerHTML='';
   for(let i=1;i<=MAX_WEEKS;i++){
     const b=document.createElement('button');
     b.textContent=`W${i}`;
     b.className='week-btn '+(i===currentWeek?'active':'inactive');
-    b.onclick=()=>{currentWeek=i; render();};
+    b.onclick=()=>{currentWeek=i;render();};
     g.append(b);
   }
 }
@@ -286,98 +294,51 @@ function renderWeekButtons(){
 function toggleStats(){
   document.getElementById('loggerView').classList.toggle('hidden');
   document.getElementById('statsView').classList.toggle('hidden');
-  if(!document.getElementById('statsView').classList.contains('hidden')){
-    renderStats();
-  }
+  if(!document.getElementById('statsView').classList.contains('hidden')) renderStats();
 }
 function renderStats(){
-  const c=document.getElementById('statsContent');
-  c.innerHTML='';
-  for(let w=1; w<=MAX_WEEKS; w++){
-    const div=document.createElement('div');
-    div.className='stats-week';
-    div.innerHTML=`<strong>Week ${w}</strong>`;
+  const c=document.getElementById('statsContent'); c.innerHTML='';
+  for(let w=1;w<=MAX_WEEKS;w++){
+    const d=document.createElement('div'); d.className='stats-week';
+    d.innerHTML=`<strong>Week ${w}</strong>`;
     ['Squat','Bench','Deadlift'].forEach(l=>{
       const s=db.lifts[l].find(x=>x.week===w);
       if(s){
-        div.innerHTML+=`
-        <div class="stats-lift">
-          <strong>${l}</strong> (${s.weekType})<br>
-          ${s.sets.map(x=>`${x.w}×${x.r}`).join(', ')}<br>
-          ${s.isolations.map(i=>i.name?`${i.name} ${i.sets}×${i.reps}@${i.weight}`:'').join('<br>')}
-        </div>`;
+        d.innerHTML+=`<div class="stats-lift"><strong>${l}</strong> (${s.weekType})<br>
+        ${s.sets.map(x=>`${x.w}×${x.r}`).join(', ')}<br>
+        ${s.isolations.map(i=>i.name?`${i.name} ${i.sets}×${i.reps}@${i.weight}`:'').join('<br>')}</div>`;
       }
     });
-    c.append(div);
+    c.append(d);
   }
 }
 
-/* ---------------- CHART WITH PB HIGHLIGHT ---------------- */
+/* ---------------- CHART ---------------- */
 let chart;
 function drawChart(){
-  const ctx = document.getElementById('rmChart');
   if(chart) chart.destroy();
-
-  chart = new Chart(ctx,{
+  chart=new Chart(document.getElementById('rmChart'),{
     type:'line',
     data:{
-      labels: Array.from({length:MAX_WEEKS}, (_,i)=>`W${i+1}`),
-      datasets: ['Squat','Bench','Deadlift'].map(l=>{
-        return {
-          label: l,
-          data: Array.from({length:MAX_WEEKS}, (_,i)=>{
-            const s = db.lifts[l].find(x=>x.week === i+1);
-            return s ? Math.max(...s.sets.map(set => Number(set.w)||0)) : null;
-          }),
-          borderColor: l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
-          fill: false,
-          pointRadius: function(ctx){
-            const s = db.lifts[l].find(x=>x.week === ctx.dataIndex + 1);
-            if(s && (s.weekType === 'Mini-Peak' || s.weekType === 'Peak')){
-              const maxW = Math.max(...s.sets.map(set => Number(set.w)||0));
-              if(maxW > db.pbs[l]) return 9;
-            }
-            return 3;
-          },
-          pointBackgroundColor: function(ctx){
-            const s = db.lifts[l].find(x=>x.week === ctx.dataIndex + 1);
-            if(s && (s.weekType === 'Mini-Peak' || s.weekType === 'Peak')){
-              const maxW = Math.max(...s.sets.map(set => Number(set.w)||0));
-              if(maxW > db.pbs[l]) return '#fde68a';
-            }
-            return '#fff';
-          },
-        }
-      })
+      labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
+      datasets:['Squat','Bench','Deadlift'].map(l=>({
+        label:l,
+        data:Array.from({length:MAX_WEEKS},(_,i)=>{
+          const s=db.lifts[l].find(x=>x.week===i+1);
+          return s?Math.max(...s.sets.map(x=>Number(x.w)||0)):null;
+        })
+      }))
     },
-    options:{
-      responsive: true,
-      plugins:{
-        legend:{position:'top'},
-        tooltip:{
-          callbacks:{
-            label: function(context){
-              const weekIndex = context.dataIndex + 1;
-              const s = db.lifts[context.dataset.label].find(x=>x.week===weekIndex);
-              if(!s) return '';
-              const maxW = Math.max(...s.sets.map(set => Number(set.w)||0));
-              return `Max: ${maxW} (${s.weekType})`;
-            }
-          }
-        }
-      }
-    }
+    options:{responsive:true}
   });
 }
 
-/* ---------------- INITIALIZE ---------------- */
+/* ---------------- INIT ---------------- */
 render();
 
 /* ---------------- SERVICE WORKER ---------------- */
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js')
-    .then(reg=>console.log('Service Worker registered', reg))
-    .catch(err=>console.log('Service Worker failed', err));
+  navigator.serviceWorker.register('sw.js');
 }
 </script>
 </body>

@@ -6,7 +6,6 @@
 <title>GymTrack Stats</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<!-- PWA META -->
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
@@ -36,10 +35,8 @@ button{cursor:pointer;}
 .stats-lift{margin-left:10px;}
 </style>
 </head>
-
 <body>
 
-<!-- HEADER -->
 <div class="card">
   <h2>GymTrack Stats</h2>
   <div class="row" style="align-items:center;gap:6px;margin-bottom:8px;">
@@ -65,14 +62,11 @@ button{cursor:pointer;}
 
     <button onclick="startNewCycle()">New Cycle</button>
     <button onclick="factoryReset()" style="background:#ef4444;color:#fff">Factory Reset</button>
-
     <button onclick="toggleStats()">Cycle Stats</button>
   </div>
-
   <div id="weekGrid" class="week-grid"></div>
 </div>
 
-<!-- MAIN LOGGER -->
 <div id="loggerView">
   <div id="sessions"></div>
   <div class="card">
@@ -80,7 +74,6 @@ button{cursor:pointer;}
   </div>
 </div>
 
-<!-- STATS VIEW -->
 <div id="statsView" class="hidden">
   <div class="card">
     <h3>Cycle Stats (Weeks 1–12)</h3>
@@ -89,7 +82,6 @@ button{cursor:pointer;}
 </div>
 
 <script>
-/* ---------------- STATE ---------------- */
 const MAX_WEEKS = 12;
 let currentWeek = 1;
 let cycle = Number(localStorage.getItem('cycle')) || 1;
@@ -118,18 +110,12 @@ function importBackup(e){
   }; r.readAsText(file);
 }
 
-/* ---------------- CYCLE CONTROLS ---------------- */
-function startNewCycle(){
-  if(confirm(`Start new cycle? (Cycle ${cycle} will be archived)`)){ cycle++; currentWeek=1; saveDB(); render(); }
-}
-function factoryReset(){
-  if(!confirm('FACTORY RESET\n\nThis deletes ALL data.')) return;
-  if(!confirm('Are you absolutely sure?')) return;
-  localStorage.clear(); location.reload();
-}
+/* ---------------- CYCLE ---------------- */
+function startNewCycle(){ if(confirm(`Start new cycle? (Cycle ${cycle} will be archived)`)){ cycle++; currentWeek=1; saveDB(); render(); } }
+function factoryReset(){ if(!confirm('FACTORY RESET\n\nThis deletes ALL data.')) return; if(!confirm('Are you absolutely sure?')) return; localStorage.clear(); location.reload(); }
 
 /* ---------------- HELPERS ---------------- */
-function prevSession(lift,type){ const s=db.lifts[lift].filter(x=>x.completed && x.weekType===type); return s.length?s[s.length-1]:null; }
+function prevSession(lift,type){ return db.lifts[lift].filter(x=>x.completed && x.weekType===type).pop() || null; }
 function prevIsolation(lift, week){ return db.isolations[lift].find(s=>s.week===week-1) || null; }
 function isWeekLocked(week){ return ['Squat','Bench','Deadlift'].some(lift=>db.lifts[lift].find(s=>s.week===week)?.completed); }
 
@@ -140,11 +126,13 @@ function createSession(lift, week, type){
   else ses.weekType=type;
 
   if(!ses.completed){
-    const count=type==='GVT'?10:5;
-    if(ses.sets.length!==count) ses.sets=Array.from({length:count},(_,i)=>ses.sets[i]||{w:'',r:''});
+    const expectedCount=type==='GVT'?10:5;
+    for(let i=0;i<expectedCount;i++){ if(!ses.sets[i]) ses.sets[i]={w:'',r:''}; }
+    ses.sets.length=expectedCount;
+
     if(ses.isolations.length<3){
-      const p=prevIsolation(lift,week);
-      ses.isolations=p?p.isolations.map(i=>({...i})):Array.from({length:3},()=>({}));
+      const prev=prevIsolation(lift,week);
+      ses.isolations=prev?prev.isolations.map(i=>({...i})):Array.from({length:3},()=>({}));
     }
   }
   return ses;
@@ -152,16 +140,14 @@ function createSession(lift, week, type){
 
 /* ---------------- SESSION ACTIONS ---------------- */
 function completeSession(lift, week){
-  const s=db.lifts[lift].find(s=>s.week===week);
+  const s=db.lifts[lift].find(sess=>sess.week===week);
   s.completed=true;
   db.isolations[lift].push({week, isolations:s.isolations.map(i=>({...i}))});
   const maxW=Math.max(...s.sets.map(x=>Number(x.w)||0));
   if(maxW>db.pbs[lift]) db.pbs[lift]=maxW;
-  saveDB();
-  checkCycleComplete();
-  render();
+  saveDB(); checkCycleComplete(); render();
 }
-function editSession(lift, week){ db.lifts[lift].find(s=>s.week===week).completed=false; saveDB(); render(); }
+function editSession(lift, week){ db.lifts[lift].find(sess=>sess.week===week).completed=false; saveDB(); render(); }
 
 /* ---------------- CYCLE COMPLETE ---------------- */
 function checkCycleComplete(){
@@ -174,42 +160,35 @@ function checkCycleComplete(){
 function render(){
   document.getElementById('weekTitle').textContent=`Week ${currentWeek} (Cycle ${cycle})`;
   renderWeekButtons();
-
-  // LOCK week type dropdown if any lift completed
-  typeSel.disabled = isWeekLocked(currentWeek);
+  typeSel.disabled=isWeekLocked(currentWeek);
 
   const container=document.getElementById('sessions'); container.innerHTML='';
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
     const s=createSession(lift,currentWeek,typeSel.value);
-    const pMain=prevSession(lift,s.weekType);
-    const pIso=prevIsolation(lift,currentWeek);
+    const sessionObj=db.lifts[lift].find(sess=>sess.week===currentWeek);
 
     const card=document.createElement('div'); card.className='card session'+(s.completed?' locked':'');
-    card.innerHTML=`<h3>${lift}</h3>`;
+    card.innerHTML=`<h3>${lift}</h3>`; 
     const row=document.createElement('div'); row.className='row';
 
     const prev=document.createElement('div'); prev.className='prev'; prev.innerHTML='<strong>Previous</strong><br>';
-    if(pMain) pMain.sets.forEach(x=>prev.innerHTML+=`${x.w}×${x.r}<br>`);
-    if(pIso) pIso.isolations.forEach(i=>{if(i.name) prev.innerHTML+=`${i.name} ${i.sets||''}×${i.reps||''}@${i.weight||''}<br>`;});
+    const pMain=prevSession(lift,s.weekType); if(pMain) pMain.sets.forEach(x=>prev.innerHTML+=`${x.w}×${x.r}<br>`);
+    const pIso=prevIsolation(lift,currentWeek); if(pIso) pIso.isolations.forEach(i=>{if(i.name) prev.innerHTML+=`${i.name} ${i.sets||''}×${i.reps||''}@${i.weight||''}<br>`;});
 
     const curr=document.createElement('div'); curr.className='curr';
 
-    // MAIN SETS – bind directly to session object in db
-    const sessionObj=db.lifts[lift].find(sess=>sess.week===currentWeek);
+    // MAIN SETS
     sessionObj.sets.forEach((_,i)=>{
       const div=document.createElement('div'); div.className='set'; div.textContent=i+1;
-
       const w=document.createElement('input'); w.type='number'; w.placeholder='Weight'; w.value=sessionObj.sets[i].w;
       w.addEventListener('blur',()=>{ sessionObj.sets[i].w=w.value; saveDB(); });
-
       const r=document.createElement('input'); r.type='number'; r.placeholder='Reps'; r.value=sessionObj.sets[i].r;
       r.addEventListener('blur',()=>{ sessionObj.sets[i].r=r.value; saveDB(); });
-
-      div.appendChild(w); div.appendChild(r); curr.appendChild(div);
+      div.append(w,r); curr.appendChild(div);
     });
 
-    // ISOLATIONS – bind to session object in db
+    // ISOLATIONS
     curr.innerHTML+='<strong>Isolation</strong>';
     sessionObj.isolations.forEach((iso,idx)=>{
       const div=document.createElement('div'); div.className='iso';

@@ -123,8 +123,8 @@ function render(){
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input class="reps" placeholder="Reps" type="number" value="${s.r}" ${ses.completed?'disabled':''} onblur="setMain('${lift}',${i},'r',this.value)">
-        <input class="weight" placeholder="Weight" type="number" value="${s.w}" ${ses.completed?'disabled':''} onblur="setMain('${lift}',${i},'w',this.value)">
+        <input type="number" placeholder="Reps" value="${s.r}" onblur="setMain('${lift}',${i},'r',this.value)">
+        <input type="number" placeholder="Weight" value="${s.w}" onblur="setMain('${lift}',${i},'w',this.value)">
       </div>`;
     });
 

@@ -104,19 +104,30 @@ function prevIsolation(lift, week){
   return db.isolations[lift].find(s=>s.week===week-1) || null;
 }
 
+/* ---------------- CREATE SESSION WITH DYNAMIC SET COUNT ---------------- */
 function createSession(lift, week, type){
   let ses = db.lifts[lift].find(s=>s.week===week);
   if(!ses){
+    // New session
     ses = {week, weekType:type, sets:[], isolations:[], notes:'', completed:false};
-    const setCount = type==='GVT'?10:5;
-    ses.sets = Array.from({length:setCount}, (_,i)=>({w:'',r:''}));
+    db.lifts[lift].push(ses);
+  } else {
+    // Update weekType if dropdown changed
+    ses.weekType = type;
+  }
 
-    // Safe isolation copy
+  // Adjust sets length according to type
+  const expectedSets = type === 'GVT' ? 10 : 5;
+  if(ses.sets.length !== expectedSets){
+    ses.sets = Array.from({length:expectedSets}, (_,i) => ses.sets[i] || {w:'', r:''});
+  }
+
+  // Ensure isolations exist
+  if(ses.isolations.length < 3){
     const prevIso = prevIsolation(lift, week);
     ses.isolations = prevIso ? prevIso.isolations.map(i=>({...i})) : Array.from({length:3},()=>({}));
-
-    db.lifts[lift].push(ses);
   }
+
   return ses;
 }
 
@@ -307,7 +318,7 @@ if('serviceWorker' in navigator){
     .catch(err=>console.log('Service Worker failed', err));
 }
 
-/* ---------------- INTERNAL TESTS ---------------- */
+/* ---------------- INTERNAL TEST ---------------- */
 function testIsolationCopy(){
   createSession('Squat', 1, 'GVT');
   updateIso('Squat',1,0,'name','Leg Curl');

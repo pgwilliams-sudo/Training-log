@@ -104,6 +104,14 @@ function prevIsolation(lift, week){
   return db.isolations[lift].find(s=>s.week===week-1) || null;
 }
 
+// ---------------- WEEK LOCK CHECK ----------------
+function isWeekLocked(week){
+  return ['Squat','Bench','Deadlift'].some(lift => {
+    const s = db.lifts[lift].find(s=>s.week===week);
+    return s?.completed;
+  });
+}
+
 /* ---------------- CREATE SESSION WITH DYNAMIC SET COUNT ---------------- */
 function createSession(lift, week, type){
   let ses = db.lifts[lift].find(s=>s.week===week);
@@ -114,13 +122,11 @@ function createSession(lift, week, type){
     ses.weekType = type;
   }
 
-  // Adjust sets length
   const expectedSets = type === 'GVT' ? 10 : 5;
   if(ses.sets.length !== expectedSets){
     ses.sets = Array.from({length:expectedSets}, (_,i) => ses.sets[i] || {w:'', r:''});
   }
 
-  // Ensure isolations exist
   if(ses.isolations.length < 3){
     const prevIso = prevIsolation(lift, week);
     ses.isolations = prevIso ? prevIso.isolations.map(i=>({...i})) : Array.from({length:3},()=>({}));
@@ -132,11 +138,9 @@ function createSession(lift, week, type){
 function completeSession(lift, week){
   const ses = db.lifts[lift].find(s=>s.week===week);
   ses.completed = true;
-
   db.isolations[lift].push({week, isolations: ses.isolations.map(i=>({...i}))});
   const maxW = Math.max(...ses.sets.map(s=>Number(s.w)||0));
   if(maxW>db.pbs[lift]) db.pbs[lift] = maxW;
-
   saveDB();
 }
 
@@ -170,32 +174,33 @@ function render(){
   document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
   renderWeekButtons();
 
+  // Lock weekType dropdown if any session is completed
+  typeSel.disabled = isWeekLocked(currentWeek);
+
   const container = document.getElementById('sessions');
   container.innerHTML='';
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
     const ses = createSession(lift, currentWeek, typeSel.value);
 
-    const prevMain = prevSession(lift, ses.weekType);    // last session of same type
-    const prevIso = prevIsolation(lift, currentWeek);   // isolation from previous week
+    const prevMain = prevSession(lift, ses.weekType);
+    const prevIso = prevIsolation(lift, currentWeek);
 
     const card = document.createElement('div');
     card.className='card session'+(ses.completed?' locked':'');
     card.innerHTML=`<h3>${lift}</h3>`;
     const row=document.createElement('div'); row.className='row';
 
-    // ----------------- PREVIOUS BOX -----------------
+    // Previous box
     const prev = document.createElement('div');
     prev.className = 'prev';
     prev.innerHTML = '<strong>Previous</strong><br>';
 
-    // Main sets from last equivalent week
     if(prevMain){
       prev.innerHTML += '<em>Main:</em><br>';
       prevMain.sets.forEach(s => prev.innerHTML += `${s.w}×${s.r}<br>`);
     }
 
-    // Isolation exercises from previous week
     if(prevIso && prevIso.isolations.length){
       prev.innerHTML += '<em>Isolation:</em><br>';
       prevIso.isolations.forEach(i=>{
@@ -203,13 +208,12 @@ function render(){
       });
     }
 
-    // Notes from last equivalent week
     if(prevMain && prevMain.notes){
       prev.innerHTML += '<em>Notes:</em><br>';
       prev.innerHTML += `${prevMain.notes}<br>`;
     }
 
-    // ----------------- CURRENT SESSION -----------------
+    // Current session
     const curr = document.createElement('div'); curr.className='curr';
     ses.sets.forEach((s,i)=>{
       curr.innerHTML += `
@@ -231,7 +235,7 @@ function render(){
       </div>`;
     });
 
-    // Complete / Edit Session Button
+    // Complete/Edit button + input lock
     if(ses.completed){
       curr.innerHTML += `<button onclick="editSession('${lift}',${currentWeek})">Edit Session</button>`;
       curr.querySelectorAll('input, textarea').forEach(inp => inp.disabled = true);
@@ -247,6 +251,11 @@ function render(){
 
   drawChart();
 }
+
+/* ---------------- DROPDOWN CHANGE ---------------- */
+typeSel.onchange = () => {
+  if(!typeSel.disabled) render();
+};
 
 /* ---------------- STATS VIEW ---------------- */
 function toggleStats(){
@@ -298,49 +307,65 @@ function renderWeekButtons(){
   }
 }
 
-/* ---------------- CHART ---------------- */
+/* ---------------- CHART WITH PB HIGHLIGHT ---------------- */
 let chart;
 function drawChart(){
-  const ctx=document.getElementById('rmChart');
+  const ctx = document.getElementById('rmChart');
   if(chart) chart.destroy();
-  chart=new Chart(ctx,{
+
+  chart = new Chart(ctx,{
     type:'line',
     data:{
-      labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
-      datasets:['Squat','Bench','Deadlift'].map(l=>{
+      labels: Array.from({length:MAX_WEEKS}, (_,i)=>`W${i+1}`),
+      datasets: ['Squat','Bench','Deadlift'].map(l=>{
         return {
-          label:l,
-          data:Array.from({length:MAX_WEEKS},(_,i)=>{
-            const s=db.lifts[l].find(x=>x.week===i+1);
-            return s?Math.max(...s.sets.map(set=>Number(set.w)||0)):null;
+          label: l,
+          data: Array.from({length:MAX_WEEKS}, (_,i)=>{
+            const s = db.lifts[l].find(x=>x.week === i+1);
+            return s ? Math.max(...s.sets.map(set => Number(set.w)||0)) : null;
           }),
-          borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
-          fill:false,
+          borderColor: l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
+          fill: false,
           pointRadius: function(ctx){
-            const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
-            if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
-              const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
-              if(maxW>db.pbs[l]) return 9;
+            const s = db.lifts[l].find(x=>x.week === ctx.dataIndex + 1);
+            if(s && (s.weekType === 'Mini-Peak' || s.weekType === 'Peak')){
+              const maxW = Math.max(...s.sets.map(set => Number(set.w)||0));
+              if(maxW > db.pbs[l]) return 9;
             }
             return 3;
           },
           pointBackgroundColor: function(ctx){
-            const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
-            if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
-              const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
-              if(maxW>db.pbs[l]) return '#fde68a';
+            const s = db.lifts[l].find(x=>x.week === ctx.dataIndex + 1);
+            if(s && (s.weekType === 'Mini-Peak' || s.weekType === 'Peak')){
+              const maxW = Math.max(...s.sets.map(set => Number(set.w)||0));
+              if(maxW > db.pbs[l]) return '#fde68a';
             }
             return '#fff';
-          }
+          },
         }
       })
     },
-    options:{responsive:true,plugins:{legend:{position:'top'}}}
+    options:{
+      responsive: true,
+      plugins:{
+        legend:{position:'top'},
+        tooltip:{
+          callbacks:{
+            label: function(context){
+              const weekIndex = context.dataIndex + 1;
+              const s = db.lifts[context.dataset.label].find(x=>x.week===weekIndex);
+              if(!s) return '';
+              const maxW = Math.max(...s.sets.map(set => Number(set.w)||0));
+              return `Max: ${maxW} (${s.weekType})`;
+            }
+          }
+        }
+      }
+    }
   });
 }
 
 /* ---------------- INITIALIZE ---------------- */
-typeSel.onchange = ()=>{ render(); };
 render();
 
 /* ---------------- SERVICE WORKER ---------------- */
@@ -349,18 +374,6 @@ if('serviceWorker' in navigator){
     .then(reg=>console.log('Service Worker registered', reg))
     .catch(err=>console.log('Service Worker failed', err));
 }
-
-/* ---------------- INTERNAL TEST ---------------- */
-function testIsolationCopy(){
-  createSession('Squat', 1, 'GVT');
-  updateIso('Squat',1,0,'name','Leg Curl');
-  completeSession('Squat',1);
-
-  createSession('Squat', 2, 'GVT');
-  const iso2 = db.lifts['Squat'].find(s=>s.week===2).isolations[0].name;
-  console.assert(iso2==='Leg Curl','Isolation copy failed!');
-}
-// Uncomment during dev: testIsolationCopy();
 </script>
 </body>
 </html>

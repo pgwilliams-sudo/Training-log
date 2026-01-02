@@ -235,6 +235,11 @@ function render(){
       </div>`;
     });
 
+    // Notes textarea
+    curr.innerHTML += `
+    <textarea placeholder="Notes" maxlength="260" 
+      onblur="updateNotes('${lift}',${currentWeek},this.value)">${ses.notes}</textarea>`;
+
     // Complete/Edit button + input lock
     if(ses.completed){
       curr.innerHTML += `<button onclick="editSession('${lift}',${currentWeek})">Edit Session</button>`;
@@ -257,6 +262,25 @@ typeSel.onchange = () => {
   if(!typeSel.disabled) render();
 };
 
+/* ---------------- NAV ---------------- */
+function changeWeek(d){ 
+  currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); 
+  render(); 
+}
+function resetAll(){ 
+  if(confirm('Delete all data?')){ localStorage.clear(); location.reload(); } 
+}
+function renderWeekButtons(){
+  const g=document.getElementById('weekGrid'); g.innerHTML='';
+  for(let i=1;i<=MAX_WEEKS;i++){
+    const b=document.createElement('button');
+    b.textContent=`W${i}`;
+    b.className='week-btn '+(i===currentWeek?'active':'inactive');
+    b.onclick=()=>{currentWeek=i; render();};
+    g.append(b);
+  }
+}
+
 /* ---------------- STATS VIEW ---------------- */
 function toggleStats(){
   document.getElementById('loggerView').classList.toggle('hidden');
@@ -265,7 +289,6 @@ function toggleStats(){
     renderStats();
   }
 }
-
 function renderStats(){
   const c=document.getElementById('statsContent');
   c.innerHTML='';
@@ -285,25 +308,6 @@ function renderStats(){
       }
     });
     c.append(div);
-  }
-}
-
-/* ---------------- NAV ---------------- */
-function changeWeek(d){ 
-  currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); 
-  render(); 
-}
-function resetAll(){ 
-  if(confirm('Delete all data?')){ localStorage.clear(); location.reload(); } 
-}
-function renderWeekButtons(){
-  const g=document.getElementById('weekGrid'); g.innerHTML='';
-  for(let i=1;i<=MAX_WEEKS;i++){
-    const b=document.createElement('button');
-    b.textContent=`W${i}`;
-    b.className='week-btn '+(i===currentWeek?'active':'inactive');
-    b.onclick=()=>{currentWeek=i; render();};
-    g.append(b);
   }
 }
 

@@ -195,34 +195,38 @@ function render(){
 
     const curr=document.createElement('div'); curr.className='curr';
 
-    // MAIN SETS
-    s.sets.forEach((set,i)=>{
+    // MAIN SETS – bind directly to session object in db
+    const sessionObj=db.lifts[lift].find(sess=>sess.week===currentWeek);
+    sessionObj.sets.forEach((_,i)=>{
       const div=document.createElement('div'); div.className='set'; div.textContent=i+1;
-      const w=document.createElement('input'); w.type='number'; w.placeholder='Weight'; w.value=set.w;
-      w.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).sets[i].w=w.value; saveDB(); });
-      const r=document.createElement('input'); r.type='number'; r.placeholder='Reps'; r.value=set.r;
-      r.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).sets[i].r=r.value; saveDB(); });
-      div.append(w,r); curr.appendChild(div);
+
+      const w=document.createElement('input'); w.type='number'; w.placeholder='Weight'; w.value=sessionObj.sets[i].w;
+      w.addEventListener('blur',()=>{ sessionObj.sets[i].w=w.value; saveDB(); });
+
+      const r=document.createElement('input'); r.type='number'; r.placeholder='Reps'; r.value=sessionObj.sets[i].r;
+      r.addEventListener('blur',()=>{ sessionObj.sets[i].r=r.value; saveDB(); });
+
+      div.appendChild(w); div.appendChild(r); curr.appendChild(div);
     });
 
-    // ISOLATIONS
+    // ISOLATIONS – bind to session object in db
     curr.innerHTML+='<strong>Isolation</strong>';
-    s.isolations.forEach((iso,idx)=>{
+    sessionObj.isolations.forEach((iso,idx)=>{
       const div=document.createElement('div'); div.className='iso';
       const name=document.createElement('input'); name.placeholder='Exercise'; name.value=iso.name||'';
-      name.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).isolations[idx].name=name.value; saveDB(); });
+      name.addEventListener('blur',()=>{ sessionObj.isolations[idx].name=name.value; saveDB(); });
       const sets=document.createElement('input'); sets.type='number'; sets.placeholder='Sets'; sets.value=iso.sets||'';
-      sets.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).isolations[idx].sets=sets.value; saveDB(); });
+      sets.addEventListener('blur',()=>{ sessionObj.isolations[idx].sets=sets.value; saveDB(); });
       const reps=document.createElement('input'); reps.type='number'; reps.placeholder='Reps'; reps.value=iso.reps||'';
-      reps.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).isolations[idx].reps=reps.value; saveDB(); });
+      reps.addEventListener('blur',()=>{ sessionObj.isolations[idx].reps=reps.value; saveDB(); });
       const weight=document.createElement('input'); weight.type='number'; weight.placeholder='Weight'; weight.value=iso.weight||'';
-      weight.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).isolations[idx].weight=weight.value; saveDB(); });
+      weight.addEventListener('blur',()=>{ sessionObj.isolations[idx].weight=weight.value; saveDB(); });
       div.append(name,sets,reps,weight); curr.appendChild(div);
     });
 
     // NOTES
-    const note=document.createElement('textarea'); note.placeholder='Notes'; note.value=s.notes;
-    note.addEventListener('blur',()=>{ db.lifts[lift].find(sess=>sess.week===currentWeek).notes=note.value; saveDB(); });
+    const note=document.createElement('textarea'); note.placeholder='Notes'; note.value=sessionObj.notes;
+    note.addEventListener('blur',()=>{ sessionObj.notes=note.value; saveDB(); });
     curr.appendChild(note);
 
     // BUTTON

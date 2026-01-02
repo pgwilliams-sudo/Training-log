@@ -82,76 +82,102 @@ button{cursor:pointer;}
 </div>
 
 <script>
-/* ---------------- DATABASE ---------------- */
+/* ---------------- DATABASE MODULE ---------------- */
+const MAX_WEEKS = 12;
+let currentWeek = 1;
+const typeSel = document.getElementById('weekType');
+
 let db = JSON.parse(localStorage.getItem('db')) || {
   lifts:{Squat:[],Bench:[],Deadlift:[]},
   isolations:{Squat:[],Bench:[],Deadlift:[]},
   pbs:{Squat:0,Bench:0,Deadlift:0}
 };
 
-const MAX_WEEKS = 12;
-let currentWeek = 1;
-const typeSel = document.getElementById('weekType');
+function saveDB(){ localStorage.setItem('db', JSON.stringify(db)); }
 
-function save(){ localStorage.setItem('db',JSON.stringify(db)); }
-
-/* ---------------- HELPERS ---------------- */
-function calc1RM(w,r){ return r>0 ? Math.round(w*(1+r/30)) : 0; }
-function prevEquivalent(lift,type){
-  const s=db.lifts[lift].filter(x=>x.completed&&x.weekType===type);
+function prevSession(lift,type){
+  const s=db.lifts[lift].filter(x=>x.completed && x.weekType===type);
   return s.length ? s[s.length-1] : null;
 }
-function prevIsolation(lift){
-  return db.isolations[lift].find(s=>s.week===currentWeek-1) || null;
+
+function prevIsolation(lift, week){
+  return db.isolations[lift].find(s=>s.week===week-1) || null;
 }
 
-/* ---------------- RENDER ---------------- */
+function createSession(lift, week, type){
+  let ses = db.lifts[lift].find(s=>s.week===week);
+  if(!ses){
+    ses = {week, weekType:type, sets:[], isolations:[], notes:'', completed:false};
+    const setCount = type==='GVT'?10:5;
+    ses.sets = Array.from({length:setCount}, (_,i)=>({w:'',r:''}));
+
+    // Safe isolation copy
+    const prevIso = prevIsolation(lift, week);
+    ses.isolations = prevIso ? prevIso.isolations.map(i=>({...i})) : Array.from({length:3},()=>({}));
+
+    db.lifts[lift].push(ses);
+  }
+  return ses;
+}
+
+function completeSession(lift, week){
+  const ses = db.lifts[lift].find(s=>s.week===week);
+  ses.completed = true;
+
+  db.isolations[lift].push({week, isolations: ses.isolations.map(i=>({...i}))});
+  const maxW = Math.max(...ses.sets.map(s=>Number(s.w)||0));
+  if(maxW>db.pbs[lift]) db.pbs[lift] = maxW;
+
+  saveDB();
+}
+
+function updateMain(lift, week, idx, field, value){
+  const s = db.lifts[lift].find(s=>s.week===week);
+  s.sets[idx] = {...s.sets[idx], [field]: value};
+  saveDB();
+}
+
+function updateIso(lift, week, idx, field, value){
+  const s = db.lifts[lift].find(s=>s.week===week);
+  s.isolations[idx] = {...s.isolations[idx], [field]: value};
+  saveDB();
+}
+
+function updateNotes(lift, week, value){
+  const s = db.lifts[lift].find(s=>s.week===week);
+  s.notes = value;
+  saveDB();
+}
+
+/* ---------------- RENDER MODULE ---------------- */
 function render(){
   document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
   renderWeekButtons();
 
-  const container=document.getElementById('sessions');
+  const container = document.getElementById('sessions');
   container.innerHTML='';
 
   ['Squat','Bench','Deadlift'].forEach(lift=>{
-    let ses=db.lifts[lift].find(s=>s.week===currentWeek);
-    if(!ses){
-      ses={week:currentWeek,weekType:typeSel.value,sets:[],isolations:[],notes:'',completed:false};
-      db.lifts[lift].push(ses);
-    }
+    const ses = createSession(lift, currentWeek, typeSel.value);
 
-    const setCount=ses.weekType==='GVT'?10:5;
-    ses.sets = Array.from({length:setCount},(_,i)=>({
-      w:ses.sets[i]?.w||'',
-      r:ses.sets[i]?.r||''
-    }));
+    const prevMain = prevSession(lift, ses.weekType);
 
-    const prevMain=prevEquivalent(lift,ses.weekType);
-    const prevIso=prevIsolation(lift);
-
-    for(let i=0;i<3;i++){
-      if(!ses.isolations[i]) ses.isolations[i]={};
-      if(prevIso && Object.keys(ses.isolations[i]).length===0){
-        ses.isolations[i]={...prevIso.isolations[i]};
-      }
-    }
-
-    const card=document.createElement('div');
+    const card = document.createElement('div');
     card.className='card session'+(ses.completed?' locked':'');
     card.innerHTML=`<h3>${lift}</h3>`;
-    const row=document.createElement('div');row.className='row';
+    const row=document.createElement('div'); row.className='row';
 
-    const prev=document.createElement('div');prev.className='prev';
+    const prev=document.createElement('div'); prev.className='prev';
     prev.innerHTML='<strong>Previous</strong><br>';
     if(prevMain) prevMain.sets.forEach(s=>prev.innerHTML+=`${s.w}×${s.r}<br>`);
 
-    const curr=document.createElement('div');curr.className='curr';
+    const curr=document.createElement('div'); curr.className='curr';
     ses.sets.forEach((s,i)=>{
       curr.innerHTML+=`
       <div class="set">
         ${i+1}
-        <input type="number" placeholder="Weight" value="${s.w}" onblur="setMain('${lift}',${i},'w',this.value)">
-        <input type="number" placeholder="Reps" value="${s.r}" onblur="setMain('${lift}',${i},'r',this.value)">
+        <input type="number" placeholder="Weight" value="${s.w}" onblur="updateMain('${lift}',${currentWeek},${i},'w',this.value)">
+        <input type="number" placeholder="Reps" value="${s.r}" onblur="updateMain('${lift}',${currentWeek},${i},'r',this.value)">
       </div>`;
     });
 
@@ -159,16 +185,16 @@ function render(){
     ses.isolations.forEach((iso,i)=>{
       curr.innerHTML+=`
       <div class="iso">
-        <input placeholder="Exercise" value="${iso.name||''}" onblur="setIso('${lift}',${i},'name',this.value)">
-        <input placeholder="Sets" type="number" value="${iso.sets||''}" onblur="setIso('${lift}',${i},'sets',this.value)">
-        <input placeholder="Reps" type="number" value="${iso.reps||''}" onblur="setIso('${lift}',${i},'reps',this.value)">
-        <input placeholder="Weight" type="number" value="${iso.weight||''}" onblur="setIso('${lift}',${i},'weight',this.value)">
+        <input placeholder="Exercise" value="${iso.name||''}" onblur="updateIso('${lift}',${currentWeek},${i},'name',this.value)">
+        <input placeholder="Sets" type="number" value="${iso.sets||''}" onblur="updateIso('${lift}',${currentWeek},${i},'sets',this.value)">
+        <input placeholder="Reps" type="number" value="${iso.reps||''}" onblur="updateIso('${lift}',${currentWeek},${i},'reps',this.value)">
+        <input placeholder="Weight" type="number" value="${iso.weight||''}" onblur="updateIso('${lift}',${currentWeek},${i},'weight',this.value)">
       </div>`;
     });
 
     curr.innerHTML+=`
-      <textarea placeholder="Notes" maxlength="260" onblur="setNotes('${lift}',this.value)">${ses.notes}</textarea>
-      <button onclick="complete('${lift}')">Complete Session</button>
+      <textarea placeholder="Notes" maxlength="260" onblur="updateNotes('${lift}',${currentWeek},this.value)">${ses.notes}</textarea>
+      <button onclick="completeSession('${lift}',${currentWeek}); render();">Complete Session</button>
     `;
 
     row.append(prev,curr);
@@ -177,7 +203,6 @@ function render(){
   });
 
   drawChart();
-  save();
 }
 
 /* ---------------- STATS VIEW ---------------- */
@@ -192,7 +217,7 @@ function toggleStats(){
 function renderStats(){
   const c=document.getElementById('statsContent');
   c.innerHTML='';
-  for(let w=1;w<=MAX_WEEKS;w++){
+  for(let w=1; w<=MAX_WEEKS; w++){
     const div=document.createElement('div');
     div.className='stats-week';
     div.innerHTML=`<strong>Week ${w}</strong>`;
@@ -211,33 +236,26 @@ function renderStats(){
   }
 }
 
-/* ---------------- SETTERS & NAV ---------------- */
-function setMain(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).sets[i][f]=v; save(); }
-function setIso(l,i,f,v){ db.lifts[l].find(s=>s.week===currentWeek).isolations[i][f]=v; save(); }
-function setNotes(l,v){ db.lifts[l].find(s=>s.week===currentWeek).notes=v; save(); }
-function complete(l){ 
-  const ses=db.lifts[l].find(s=>s.week===currentWeek);
-  ses.completed=true; 
-  const isoCopy=JSON.parse(JSON.stringify(ses.isolations));
-  db.isolations[l].push({week:currentWeek,isolations:isoCopy});
-  const maxW = Math.max(...ses.sets.map(s=>Number(s.w)||0));
-  if(maxW>db.pbs[l]) db.pbs[l]=maxW;
+/* ---------------- NAV ---------------- */
+function changeWeek(d){ 
+  currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); 
   render(); 
 }
-function changeWeek(d){ currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d)); render(); }
-function resetAll(){ if(confirm('Delete all data?')){ localStorage.clear();location.reload(); } }
+function resetAll(){ 
+  if(confirm('Delete all data?')){ localStorage.clear(); location.reload(); } 
+}
 function renderWeekButtons(){
-  const g=document.getElementById('weekGrid');g.innerHTML='';
+  const g=document.getElementById('weekGrid'); g.innerHTML='';
   for(let i=1;i<=MAX_WEEKS;i++){
     const b=document.createElement('button');
     b.textContent=`W${i}`;
     b.className='week-btn '+(i===currentWeek?'active':'inactive');
-    b.onclick=()=>{currentWeek=i;render();};
+    b.onclick=()=>{currentWeek=i; render();};
     g.append(b);
   }
 }
 
-/* ---------------- CHART WITH PB ---------------- */
+/* ---------------- CHART ---------------- */
 let chart;
 function drawChart(){
   const ctx=document.getElementById('rmChart');
@@ -255,19 +273,19 @@ function drawChart(){
           }),
           borderColor:l==='Squat'?'#3b82f6':l==='Bench'?'#ef4444':'#16a34a',
           fill:false,
-          pointRadius: function(context){
-            const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
+          pointRadius: function(ctx){
+            const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
             if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
               const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
-              if(maxW>db.pbs[l]) return 9; // gold PB point, 3x normal
+              if(maxW>db.pbs[l]) return 9;
             }
             return 3;
           },
-          pointBackgroundColor: function(context){
-            const s=db.lifts[l].find(x=>x.week===context.dataIndex+1);
+          pointBackgroundColor: function(ctx){
+            const s=db.lifts[l].find(x=>x.week===ctx.dataIndex+1);
             if(s && (s.weekType==='Mini-Peak'||s.weekType==='Peak')){
               const maxW=Math.max(...s.sets.map(set=>Number(set.w)||0));
-              if(maxW>db.pbs[l]) return '#fde68a'; // gold
+              if(maxW>db.pbs[l]) return '#fde68a';
             }
             return '#fff';
           }
@@ -278,15 +296,28 @@ function drawChart(){
   });
 }
 
-typeSel.onchange=()=>{ render(); };
+/* ---------------- INITIALIZE ---------------- */
+typeSel.onchange = ()=>{ render(); };
 render();
 
 /* ---------------- SERVICE WORKER ---------------- */
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js')
-    .then(reg => console.log('Service Worker registered', reg))
-    .catch(err => console.log('Service Worker failed', err));
+    .then(reg=>console.log('Service Worker registered', reg))
+    .catch(err=>console.log('Service Worker failed', err));
 }
+
+/* ---------------- INTERNAL TESTS ---------------- */
+function testIsolationCopy(){
+  createSession('Squat', 1, 'GVT');
+  updateIso('Squat',1,0,'name','Leg Curl');
+  completeSession('Squat',1);
+
+  createSession('Squat', 2, 'GVT');
+  const iso2 = db.lifts['Squat'].find(s=>s.week===2).isolations[0].name;
+  console.assert(iso2==='Leg Curl','Isolation copy failed!');
+}
+// Uncomment during dev: testIsolationCopy();
 </script>
 </body>
 </html>

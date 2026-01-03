@@ -148,21 +148,32 @@ ses.sets.length = expectedSets;
 function completeSession(lift, week){
   const ses = db.lifts[lift].find(s=>s.week===week);
   ses.completed = true;
-  db.isolations[lift].push({week, isolations: ses.isolations.map(i=>({...i}))});
+
+  db.isolations[lift].push({
+    week,
+    isolations: ses.isolations.map(i=>({...i}))
+  });
+
   const maxW = Math.max(...ses.sets.map(s=>Number(s.w)||0));
-  if(maxW>db.pbs[lift]) db.pbs[lift] = maxW;
+  if(maxW > db.pbs[lift]) db.pbs[lift] = maxW;
+
   saveDB();
+
+  // ✅ IMMEDIATE UI UPDATE
+  render();
+
+  // Cycle completion check (week 12 only)
   if(isCycleComplete()){
-  setTimeout(() => {
-    if(confirm(`Cycle ${db.cycle} complete. Send to backup?`)){
-      exportData();
-}
-db.cycle++;
-currentWeek = 1;
-saveDB();
-render();
-  }, 300);
-}
+    setTimeout(() => {
+      if(confirm(`Cycle ${db.cycle} complete. Send to backup?`)){
+        exportData();
+      }
+      db.cycle++;
+      currentWeek = 1;
+      saveDB();
+      render();
+    }, 300);
+  }
 }
 
 function editSession(lift, week){

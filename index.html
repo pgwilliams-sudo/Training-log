@@ -123,14 +123,20 @@ function createSession(lift, week, type){
   if(!ses){
     ses = {week, weekType:type, sets:[], isolations:[], notes:'', completed:false};
     db.lifts[lift].push(ses);
-  } else {
-    ses.weekType = type;
   }
 
+  // 🔒 DO NOT MUTATE COMPLETED SESSIONS
+  if(ses.completed) return ses;
+
+  ses.weekType = type;
+
   const expectedSets = type === 'GVT' ? 10 : 5;
-  if(ses.sets.length !== expectedSets){
-    ses.sets = Array.from({length:expectedSets}, (_,i) => ses.sets[i] || {w:'', r:''});
-  }
+ const expectedSets = type === 'GVT' ? 10 : 5;
+
+for(let i = 0; i < expectedSets; i++){
+  if(!ses.sets[i]) ses.sets[i] = { w:'', r:'' };
+}
+ses.sets.length = expectedSets;
 
   if(ses.isolations.length < 3){
     const prevIso = prevIsolation(lift, week);
@@ -152,8 +158,13 @@ function completeSession(lift, week){
     if(confirm(`Cycle ${db.cycle} complete. Send to backup?`)){
       exportData();
     }
-    db.cycle++;
-    saveDB();
+    if(confirm(`Cycle ${db.cycle} complete. Send to backup?`)){
+  exportData();
+}
+db.cycle++;
+currentWeek = 1;
+saveDB();
+render();
   }, 300);
 }
 }

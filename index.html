@@ -149,10 +149,14 @@ function completeSession(lift, week){
   const ses = db.lifts[lift].find(s=>s.week===week);
   ses.completed = true;
 
-  db.isolations[lift].push({
-    week,
-    isolations: ses.isolations.map(i=>({...i}))
-  });
+  // Remove any existing isolation snapshot for this week
+db.isolations[lift] = db.isolations[lift].filter(x => x.week !== week);
+
+// Save latest isolation data
+db.isolations[lift].push({
+  week,
+  isolations: ses.isolations.map(i => ({ ...i }))
+});
 
   const maxW = Math.max(...ses.sets.map(s=>Number(s.w)||0));
   if(maxW > db.pbs[lift]) db.pbs[lift] = maxW;

@@ -131,7 +131,6 @@ function createSession(lift, week, type){
   ses.weekType = type;
 
   const expectedSets = type === 'GVT' ? 10 : 5;
- const expectedSets = type === 'GVT' ? 10 : 5;
 
 for(let i = 0; i < expectedSets; i++){
   if(!ses.sets[i]) ses.sets[i] = { w:'', r:'' };
@@ -157,9 +156,6 @@ function completeSession(lift, week){
   setTimeout(() => {
     if(confirm(`Cycle ${db.cycle} complete. Send to backup?`)){
       exportData();
-    }
-    if(confirm(`Cycle ${db.cycle} complete. Send to backup?`)){
-  exportData();
 }
 db.cycle++;
 currentWeek = 1;
@@ -270,7 +266,7 @@ function render(){
       curr.innerHTML += `<button onclick="editSession('${lift}',${currentWeek})">Edit Session</button>`;
       curr.querySelectorAll('input, textarea').forEach(inp => inp.disabled = true);
     } else {
-      curr.innerHTML += `<button onclick="completeSession('${lift}',${currentWeek}); render();">Complete Session</button>`;
+      curr.innerHTML += `<button onclick="completeSession('${lift}',${currentWeek})">Complete Session</button>`;
       curr.querySelectorAll('input, textarea').forEach(inp => inp.disabled = false);
     }
 

@@ -22,13 +22,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;back
 select,input,textarea,button{padding:6px;border-radius:6px;border:1px solid #ccc;font-size:0.85rem;}
 input[type=number]{width:70px;}
 textarea{resize:none;width:100%;}
+button{cursor:pointer;}
 .session{border-top:1px solid #eee;padding-top:8px;margin-top:8px;}
-.prev{background:#f9fafb;border:1px dashed #bbb;padding:8px;border-radius:6px;flex:1;}
-.curr{flex:1;}
-.set{display:flex;gap:4px;margin-bottom:4px;}
+.prev{background:#f9fafb;border:1px dashed #bbb;padding:8px;border-radius:6px;flex:1;min-width:120px;}
+.curr{flex:1;min-width:160px;}
+.set{display:flex;gap:4px;margin-bottom:4px;align-items:center;flex-wrap:wrap;}
 .iso{background:#fafafa;padding:6px;border-radius:6px;margin-bottom:6px;}
 .locked{opacity:.6;}
 .hidden{display:none;}
+.small{font-size:11px;color:#555;}
 </style>
 </head>
 
@@ -36,23 +38,16 @@ textarea{resize:none;width:100%;}
 
 <div class="card">
   <h2>GymTrack Stats</h2>
-  <div class="row">
+  <div class="row" style="align-items:center;">
     <button onclick="changeWeek(-1)">◀</button>
     <strong id="weekTitle">Week 1</strong>
     <button onclick="changeWeek(1)">▶</button>
 
-    <select id="weekType">
-      <option>GVT</option>
-      <option>Core Session</option>
-      <option>Breakdown Banded</option>
-      <option>Breakdown Pause</option>
-      <option>Breakdown Other</option>
-      <option>Mini-Peak</option>
-      <option>Peak</option>
-    </select>
+    <button onclick="exportData()">Export</button>
+    <button onclick="document.getElementById('importFile').click()">Import</button>
+    <input type="file" id="importFile" accept=".json" hidden>
 
     <button onclick="toggleStats()">Cycle Stats</button>
-    <button onclick="exportData()">Export</button>
     <button onclick="resetAll()" style="background:#ef4444;color:#fff">Reset</button>
   </div>
 
@@ -60,8 +55,15 @@ textarea{resize:none;width:100%;}
 </div>
 
 <div id="loggerView">
+  <div class="card">
+    <button onclick="addSession()">➕ Add Session</button>
+  </div>
+
   <div id="sessions"></div>
-  <div class="card"><canvas id="rmChart"></canvas></div>
+
+  <div class="card">
+    <canvas id="rmChart"></canvas>
+  </div>
 </div>
 
 <div id="statsView" class="hidden">
@@ -73,103 +75,182 @@ textarea{resize:none;width:100%;}
 
 <script>
 const MAX_WEEKS = 12;
-let currentWeek = 1;
 const LIFTS = ['Squat','Bench','Deadlift','Row','Overhead Press'];
+const CORE_LIFTS = ['Squat','Bench','Deadlift'];
+let currentWeek = 1;
 
+/* ---------------- DB ---------------- */
 let db = JSON.parse(localStorage.getItem('db')) || {
-  cycle:1,
-  weeks:{},
-  pbs:{Squat:0,Bench:0,Deadlift:0}
+  cycle: 1,
+  weeks: {},
+  pbs: {Squat:0,Bench:0,Deadlift:0}
 };
+
+for(let i=1;i<=MAX_WEEKS;i++){
+  if(!db.weeks[i]) db.weeks[i] = { sessions: [] };
+}
 
 function saveDB(){ localStorage.setItem('db', JSON.stringify(db)); }
 
-function ensureWeek(w){
-  if(!db.weeks[w]) db.weeks[w]={ type:'Core Session', sessions:[] };
-}
-
-function getMostRecentSession(lift){
-  let all=[];
+/* ---------------- HELPERS ---------------- */
+function prevSession(lift){
+  let found = null;
   Object.values(db.weeks).forEach(w=>{
     w.sessions.forEach(s=>{
-      if(s.lift===lift && s.completed) all.push(s);
+      if(s.lift===lift && s.completed) found = s;
     });
   });
-  return all.length ? all[all.length-1] : null;
+  return found;
 }
 
-function render(){
-  ensureWeek(currentWeek);
-  document.getElementById('weekTitle').textContent=`Week ${currentWeek}`;
-  renderWeekButtons();
+/* ---------------- SESSIONS ---------------- */
+function addSession(){
+  db.weeks[currentWeek].sessions.push({
+    id: crypto.randomUUID(),
+    lift: 'Squat',
+    sets: Array.from({length:5},()=>({w:'',r:''})),
+    isolations: Array.from({length:3},()=>({})),
+    notes:'',
+    completed:false
+  });
+  saveDB();
+  render();
+}
 
-  const week=db.weeks[currentWeek];
-  const container=document.getElementById('sessions');
-  container.innerHTML='';
+function deleteSession(id){
+  if(!confirm('Delete this session?')) return;
+  db.weeks[currentWeek].sessions =
+    db.weeks[currentWeek].sessions.filter(s=>s.id!==id);
+  saveDB();
+  render();
+}
 
-  if(week.sessions.length===0){
-    container.innerHTML='<div class="card"><em>No sessions added for this week</em></div>';
+function completeSession(id){
+  const s = db.weeks[currentWeek].sessions.find(x=>x.id===id);
+  s.completed = true;
+
+  if(CORE_LIFTS.includes(s.lift)){
+    const maxW = Math.max(...s.sets.map(x=>Number(x.w)||0));
+    if(maxW > db.pbs[s.lift]) db.pbs[s.lift] = maxW;
   }
 
-  week.sessions.forEach((ses)=>{
-    const prev=getMostRecentSession(ses.lift);
-    const card=document.createElement('div');
-    card.className='card session'+(ses.completed?' locked':'');
-    card.innerHTML=`<h3>${ses.lift}</h3>`;
-    const row=document.createElement('div'); row.className='row';
+  saveDB();
+  render();
 
-    const prevBox=document.createElement('div'); prevBox.className='prev';
-    if(prev){
-      prevBox.innerHTML='<strong>Previous</strong><br>';
-      prev.sets.forEach(s=>prevBox.innerHTML+=`${s.w}×${s.r}<br>`);
-    }
+  if(isCycleComplete()){
+    setTimeout(()=>{
+      if(confirm(`Cycle ${db.cycle} complete. Export backup?`)){
+        exportData();
+      }
+      db.cycle++;
+      currentWeek = 1;
+      saveDB();
+      render();
+    },300);
+  }
+}
 
-    const curr=document.createElement('div'); curr.className='curr';
-    ses.sets.forEach((s,i)=>{
+function editSession(id){
+  const s = db.weeks[currentWeek].sessions.find(x=>x.id===id);
+  s.completed = false;
+  saveDB();
+  render();
+}
+
+/* ---------------- RENDER ---------------- */
+function render(){
+  document.getElementById('weekTitle').textContent = `Week ${currentWeek}`;
+  renderWeekButtons();
+
+  const c = document.getElementById('sessions');
+  c.innerHTML = '';
+
+  db.weeks[currentWeek].sessions.forEach(s=>{
+    const prev = prevSession(s.lift);
+
+    const card = document.createElement('div');
+    card.className = 'card session'+(s.completed?' locked':'');
+
+    card.innerHTML = `
+      <div class="row">
+        <select onchange="sChangeLift('${s.id}',this.value)">
+          ${LIFTS.map(l=>`<option ${l===s.lift?'selected':''}>${l}</option>`).join('')}
+        </select>
+        <button onclick="deleteSession('${s.id}')">🗑</button>
+      </div>
+      <div class="row">
+        <div class="prev">
+          <strong>Previous</strong><br>
+          ${prev?prev.sets.map(x=>`${x.w}×${x.r}`).join('<br>'):'—'}
+        </div>
+        <div class="curr" id="curr-${s.id}"></div>
+      </div>
+    `;
+
+    const curr = card.querySelector(`#curr-${s.id}`);
+
+    s.sets.forEach((set,i)=>{
       curr.innerHTML+=`
-      <div class="set">
-        ${i+1}
-        <input type="number" value="${s.w}" onblur="s.w=this.value;saveDB()">
-        <input type="number" value="${s.r}" onblur="s.r=this.value;saveDB()">
-      </div>`;
+        <div class="set">
+          ${i+1}
+          <input type="number" value="${set.w}" onblur="uSet('${s.id}',${i},'w',this.value)">
+          <input type="number" value="${set.r}" onblur="uSet('${s.id}',${i},'r',this.value)">
+        </div>`;
     });
 
-    row.append(prevBox,curr);
-    card.append(row);
-    container.append(card);
+    curr.innerHTML += `<strong>Isolation</strong>`;
+    s.isolations.forEach((iso,i)=>{
+      curr.innerHTML+=`
+        <div class="iso">
+          <input placeholder="Exercise" value="${iso.name||''}" onblur="uIso('${s.id}',${i},'name',this.value)">
+          <input type="number" placeholder="Sets" value="${iso.sets||''}" onblur="uIso('${s.id}',${i},'sets',this.value)">
+          <input type="number" placeholder="Reps" value="${iso.reps||''}" onblur="uIso('${s.id}',${i},'reps',this.value)">
+          <input type="number" placeholder="Weight" value="${iso.weight||''}" onblur="uIso('${s.id}',${i},'weight',this.value)">
+        </div>`;
+    });
+
+    curr.innerHTML+=`
+      <textarea onblur="uNotes('${s.id}',this.value)">${s.notes}</textarea>
+      ${s.completed
+        ? `<button onclick="editSession('${s.id}')">Edit</button>`
+        : `<button onclick="completeSession('${s.id}')">Complete</button>`
+      }
+    `;
+
+    if(s.completed){
+      card.querySelectorAll('input,textarea,select').forEach(i=>i.disabled=true);
+    }
+
+    c.appendChild(card);
   });
 
   drawChart();
 }
 
-function drawChart(){
-  const ctx=document.getElementById('rmChart');
-  if(window.chart) chart.destroy();
-
-  chart=new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
-      datasets:['Squat','Bench','Deadlift'].map(l=>({
-        label:l,
-        data:Array.from({length:MAX_WEEKS},(_,i)=>{
-          const w=db.weeks[i+1];
-          if(!w) return null;
-          const s=w.sessions.filter(x=>x.lift===l);
-          if(!s.length) return null;
-          return Math.max(...s.flatMap(x=>x.sets.map(z=>Number(z.w)||0)));
-        }),
-        fill:false
-      }))
-    }
-  });
+/* ---------------- UPDATERS ---------------- */
+function sChangeLift(id,v){
+  const s=db.weeks[currentWeek].sessions.find(x=>x.id===id);
+  s.lift=v;
+  saveDB(); render();
+}
+function uSet(id,i,f,v){
+  const s=db.weeks[currentWeek].sessions.find(x=>x.id===id);
+  s.sets[i][f]=v; saveDB();
+}
+function uIso(id,i,f,v){
+  const s=db.weeks[currentWeek].sessions.find(x=>x.id===id);
+  s.isolations[i][f]=v; saveDB();
+}
+function uNotes(id,v){
+  const s=db.weeks[currentWeek].sessions.find(x=>x.id===id);
+  s.notes=v; saveDB();
 }
 
+/* ---------------- NAV ---------------- */
 function changeWeek(d){
   currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d));
   render();
 }
-
 function renderWeekButtons(){
   const g=document.getElementById('weekGrid'); g.innerHTML='';
   for(let i=1;i<=MAX_WEEKS;i++){
@@ -177,15 +258,19 @@ function renderWeekButtons(){
     b.textContent=`W${i}`;
     b.className='week-btn '+(i===currentWeek?'active':'inactive');
     b.onclick=()=>{currentWeek=i;render();};
-    g.append(b);
+    g.appendChild(b);
   }
 }
 
-function toggleStats(){
-  document.getElementById('loggerView').classList.toggle('hidden');
-  document.getElementById('statsView').classList.toggle('hidden');
+/* ---------------- CYCLE ---------------- */
+function isCycleComplete(){
+  if(currentWeek!==12) return false;
+  return CORE_LIFTS.every(l=>{
+    return db.weeks[12].sessions.some(s=>s.lift===l && s.completed);
+  });
 }
 
+/* ---------------- IMPORT / EXPORT ---------------- */
 function exportData(){
   const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
   const a=document.createElement('a');
@@ -193,13 +278,52 @@ function exportData(){
   a.download='gymtrack-backup.json';
   a.click();
 }
+document.getElementById('importFile').addEventListener('change',e=>{
+  const f=e.target.files[0];
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    if(confirm('Replace all data?')){
+      db=JSON.parse(ev.target.result);
+      saveDB(); render();
+    }
+  };
+  r.readAsText(f);
+});
 
-function resetAll(){
-  if(confirm('Delete all data?')){
-    localStorage.clear(); location.reload();
-  }
+/* ---------------- STATS ---------------- */
+function toggleStats(){
+  document.getElementById('loggerView').classList.toggle('hidden');
+  document.getElementById('statsView').classList.toggle('hidden');
 }
 
+/* ---------------- CHART ---------------- */
+let chart;
+function drawChart(){
+  const ctx=document.getElementById('rmChart');
+  if(chart) chart.destroy();
+
+  chart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:Array.from({length:MAX_WEEKS},(_,i)=>`W${i+1}`),
+      datasets:CORE_LIFTS.map(l=>{
+        return{
+          label:l,
+          data:Array.from({length:MAX_WEEKS},(_,i)=>{
+            const w=db.weeks[i+1];
+            if(!w) return null;
+            const s=w.sessions.filter(x=>x.lift===l && x.completed);
+            if(!s.length) return null;
+            return Math.max(...s.map(x=>Math.max(...x.sets.map(y=>Number(y.w)||0))));
+          })
+        };
+      })
+    }
+  });
+}
+
+/* ---------------- INIT ---------------- */
 render();
 </script>
 </body>

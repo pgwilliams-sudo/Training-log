@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -24,11 +25,13 @@ button{cursor:pointer}
 .locked{opacity:.6}
 .hidden{display:none}
 </style>
+
 </head>
 
 <body>
 
 <!-- HEADER -->
+
 <div class="card">
   <h2>GymTrack</h2>
 
@@ -37,20 +40,24 @@ button{cursor:pointer}
     <strong id="weekTitle">Week 1</strong>
     <button onclick="changeWeek(1)">▶</button>
 
-    <button onclick="addSession()">Add Session</button>
-    <button onclick="cycleComplete()">Cycle Complete</button>
+```
+<button onclick="addSession()">Add Session</button>
+<button onclick="cycleComplete()">Cycle Complete</button>
 
-    <button onclick="exportData()">Export</button>
-    <button onclick="document.getElementById('importFile').click()">Import</button>
-    <input id="importFile" type="file" accept=".json" hidden>
+<button onclick="exportData()">Export</button>
+<button onclick="document.getElementById('importFile').click()">Import</button>
+<input id="importFile" type="file" accept=".json" hidden>
 
-    <button onclick="resetAll()" style="background:#ef4444;color:#fff">Reset</button>
+<button onclick="resetAll()" style="background:#ef4444;color:#fff">Reset</button>
+```
+
   </div>
 
   <div id="weekGrid" class="row" style="margin-top:8px"></div>
 </div>
 
 <!-- MAIN -->
+
 <div id="sessions"></div>
 
 <script>
@@ -89,34 +96,8 @@ function mostRecentIsolation(lift){
   }
   return [{},{},{}];
 }
-function findPreviousMainSession(currentSession) {
-  const weekSessions = getWeek();
-  const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
 
-  // 1. Same week, earlier sessions
-  for (let i = currentIndex - 1; i >= 0; i--) {
-    const s = weekSessions[i];
-    if (s.completed && s.lift === currentSession.lift) {
-      return s;
-    }
-  }
-
-  // 2. Previous weeks
-  for (let w = currentWeek - 1; w >= 1; w--) {
-    const week = db.weeks[w];
-    if (!week) continue;
-
-    for (let i = week.length - 1; i >= 0; i--) {
-      const s = week[i];
-      if (s.completed && s.lift === currentSession.lift) {
-        return s;
-      }
-    }
-  }
-
-  return null;
-}
-  function getPreviousMainSession(currentSession) {
+function getPreviousMainSession(currentSession) {
   const weekSessions = db.weeks[currentWeek] || [];
   const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
 
@@ -143,7 +124,8 @@ function findPreviousMainSession(currentSession) {
 
   return null;
 }
-  function getPreviousIsolationSession(currentSession) {
+
+function getPreviousIsolationSession(currentSession) {
   const weekSessions = db.weeks[currentWeek] || [];
   const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
 
@@ -180,6 +162,7 @@ function findPreviousMainSession(currentSession) {
 
   return null;
 }
+
 /* ================= SESSION OPS ================= */
 
 function addSession(){
@@ -225,52 +208,50 @@ function render(){
   c.innerHTML = "";
 
   getWeek().forEach(session => {
-  if (
-    !session.completed &&
-    (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
-  ) {
-    const prev = mostRecentIsolation(session.lift);
+    // Initialize isolations if needed
+    if (
+      !session.completed &&
+      (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
+    ) {
+      const prev = mostRecentIsolation(session.lift);
+      session.isolations = prev ? prev.map(i => ({ ...i })) : [{}, {}, {}];
+    }
 
-    session.isolations = prev
-      ? prev.map(i => ({ ...i }))
-      : [{}, {}, {}];
-  }
-});
-
+    // Create session card
     const card = document.createElement("div");
     card.className = "card" + (session.completed?" locked":"");
 
+    // Build previous session info
     const prev = document.createElement("div");
     prev.className = "prev";
     prev.innerHTML = "<strong>Previous</strong><br>";
-    mostRecentIsolation(session.lift).forEach(i=>{
-      if(i.name) prev.innerHTML+=`${i.name} ${i.sets||""}×${i.reps||""}@${i.weight||""}<br>`;
-    });
-const prevMain = getPreviousMainSession(session);
+    
+    const prevMain = getPreviousMainSession(session);
+    if (prevMain) {
+      prev.innerHTML += '<em>Main:</em><br>';
+      prevMain.sets.forEach(set => {
+        if (set.w || set.r) {
+          prev.innerHTML += `${set.w || ''} × ${set.r || ''}<br>`;
+        }
+      });
 
-if (prevMain) {
-  prev.innerHTML += '<em>Main:</em><br>';
-  prevMain.sets.forEach(set => {
-    if (set.w || set.r) {
-      prev.innerHTML += `${set.w || ''} × ${set.r || ''}<br>`;
+      if (prevMain.notes) {
+        prev.innerHTML += '<em>Notes:</em><br>';
+        prev.innerHTML += `${prevMain.notes}<br>`;
+      }
     }
-  });
-
-  if (prevMain.notes) {
-    prev.innerHTML += '<em>Notes:</em><br>';
-    prev.innerHTML += `${prevMain.notes}<br>`;
-  }
-}
+    
     const prevIsoSession = getPreviousIsolationSession(session);
-
-if (prevIsoSession) {
-  prev.innerHTML += '<em>Isolation:</em><br>';
-  prevIsoSession.isolations.forEach(i => {
-    if (i.name) {
-      prev.innerHTML += `${i.name} ${i.sets || ''}×${i.reps || ''}@${i.weight || ''}<br>`;
+    if (prevIsoSession) {
+      prev.innerHTML += '<em>Isolation:</em><br>';
+      prevIsoSession.isolations.forEach(i => {
+        if (i.name) {
+          prev.innerHTML += `${i.name} ${i.sets || ''}×${i.reps || ''}@${i.weight || ''}<br>`;
+        }
+      });
     }
-  });
-}
+
+    // Build current session form
     const curr = document.createElement("div");
     curr.className="curr";
 
@@ -311,19 +292,23 @@ if (prevIsoSession) {
     curr.innerHTML+=`
       <textarea ${session.completed?"disabled":""}
         onblur="updateNotes('${session.id}',this.value)">${session.notes}</textarea>
-    `;
 
-    curr.innerHTML+= session.completed
-      ? `<button onclick="editSession('${session.id}')">Edit</button>`
-      : `<button onclick="completeSession('${session.id}')">Complete</button>
-         <button onclick="deleteSession('${session.id}')">Delete</button>`;
+```
+`;
 
-    const row=document.createElement("div");
-    row.className="row";
-    row.append(prev,curr);
-    card.append(row);
-    c.append(card);
-  });
+curr.innerHTML+= session.completed
+  ? `<button onclick="editSession('${session.id}')">Edit</button>`
+  : `<button onclick="completeSession('${session.id}')">Complete</button>
+     <button onclick="deleteSession('${session.id}')">Delete</button>`;
+
+const row=document.createElement("div");
+row.className="row";
+row.append(prev,curr);
+card.append(row);
+c.append(card);
+```
+
+});
 }
 
 /* ================= UPDATES ================= */
@@ -336,63 +321,64 @@ function updateNotes(id,v){getWeek().find(s=>s.id===id).notes=v;saveDB()}
 /* ================= HEADER ================= */
 
 function changeWeek(d){
-  currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d));
-  render();
+currentWeek=Math.max(1,Math.min(MAX_WEEKS,currentWeek+d));
+render();
 }
 
 function renderWeekButtons(){
-  const g=document.getElementById("weekGrid");
-  g.innerHTML="";
-  for(let i=1;i<=MAX_WEEKS;i++){
-    const b=document.createElement("button");
-    b.textContent=`W${i}`;
-    b.className="week-btn "+(i===currentWeek?"active":"inactive");
-    b.onclick=()=>{currentWeek=i;render()};
-    g.append(b);
-  }
+const g=document.getElementById(“weekGrid”);
+g.innerHTML=””;
+for(let i=1;i<=MAX_WEEKS;i++){
+const b=document.createElement(“button”);
+b.textContent=`W${i}`;
+b.className=“week-btn “+(i===currentWeek?“active”:“inactive”);
+b.onclick=()=>{currentWeek=i;render()};
+g.append(b);
+}
 }
 
 function cycleComplete(){
-  if(confirm(`Cycle ${db.cycle} complete. Backup now?`)){
-    exportData();
-  }
-  db.cycle++;
-  saveDB();
-  alert("Cycle advanced.");
+if(confirm(`Cycle ${db.cycle} complete. Backup now?`)){
+exportData();
+}
+db.cycle++;
+saveDB();
+alert(“Cycle advanced.”);
 }
 
 function resetAll(){
-  if(confirm("Delete all data?")){
-    localStorage.clear();
-    location.reload();
-  }
+if(confirm(“Delete all data?”)){
+localStorage.clear();
+location.reload();
+}
 }
 
 /* ================= IMPORT / EXPORT ================= */
 
 function exportData(){
-  const blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="gymtrack-backup.json";
-  a.click();
+const blob=new Blob([JSON.stringify(db,null,2)],{type:“application/json”});
+const a=document.createElement(“a”);
+a.href=URL.createObjectURL(blob);
+a.download=“gymtrack-backup.json”;
+a.click();
 }
 
-document.getElementById("importFile").addEventListener("change",e=>{
-  const r=new FileReader();
-  r.onload=ev=>{
-    if(confirm("Replace all data?")){
-      db=JSON.parse(ev.target.result);
-      saveDB();
-      render();
-    }
-  };
-  r.readAsText(e.target.files[0]);
+document.getElementById(“importFile”).addEventListener(“change”,e=>{
+const r=new FileReader();
+r.onload=ev=>{
+if(confirm(“Replace all data?”)){
+db=JSON.parse(ev.target.result);
+saveDB();
+render();
+}
+};
+r.readAsText(e.target.files[0]);
 });
 
 /* ================= INIT ================= */
 
 render();
 </script>
+
 </body>
 </html>

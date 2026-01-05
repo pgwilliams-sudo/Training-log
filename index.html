@@ -89,7 +89,60 @@ function mostRecentIsolation(lift){
   }
   return [{},{},{}];
 }
+function findPreviousMainSession(currentSession) {
+  const weekSessions = getWeek();
+  const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
 
+  // 1. Same week, earlier sessions
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    const s = weekSessions[i];
+    if (s.completed && s.lift === currentSession.lift) {
+      return s;
+    }
+  }
+
+  // 2. Previous weeks
+  for (let w = currentWeek - 1; w >= 1; w--) {
+    const week = db.weeks[w];
+    if (!week) continue;
+
+    for (let i = week.length - 1; i >= 0; i--) {
+      const s = week[i];
+      if (s.completed && s.lift === currentSession.lift) {
+        return s;
+      }
+    }
+  }
+
+  return null;
+}
+  function getPreviousMainSession(currentSession) {
+  const weekSessions = db.weeks[currentWeek] || [];
+  const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
+
+  // 1️⃣ Same week, earlier sessions
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    const s = weekSessions[i];
+    if (s.completed && s.lift === currentSession.lift) {
+      return s;
+    }
+  }
+
+  // 2️⃣ Previous weeks
+  for (let w = currentWeek - 1; w >= 1; w--) {
+    const sessions = db.weeks[w];
+    if (!sessions) continue;
+
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      if (s.completed && s.lift === currentSession.lift) {
+        return s;
+      }
+    }
+  }
+
+  return null;
+}
 /* ================= SESSION OPS ================= */
 
 function addSession(){
@@ -148,7 +201,21 @@ function render(){
     mostRecentIsolation(session.lift).forEach(i=>{
       if(i.name) prev.innerHTML+=`${i.name} ${i.sets||""}×${i.reps||""}@${i.weight||""}<br>`;
     });
+const prevMain = getPreviousMainSession(session);
 
+if (prevMain) {
+  prev.innerHTML += '<em>Main:</em><br>';
+  prevMain.sets.forEach(set => {
+    if (set.w || set.r) {
+      prev.innerHTML += `${set.w || ''} × ${set.r || ''}<br>`;
+    }
+  });
+
+  if (prevMain.notes) {
+    prev.innerHTML += '<em>Notes:</em><br>';
+    prev.innerHTML += `${prevMain.notes}<br>`;
+  }
+}
     const curr = document.createElement("div");
     curr.className="curr";
 

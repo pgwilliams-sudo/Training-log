@@ -241,6 +241,7 @@ if (weekTypeSelect) {
 if (prevIso) {
   session.isolations = prevIso.isolations.map(i => ({ ...i }));
 }
+    }
     
     const card = document.createElement("div");
     card.className = "card" + (session.completed ? " locked" : "");

@@ -238,7 +238,7 @@ if (weekTypeSelect) {
       (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
     ) {
       const prevIso = getPreviousIsolationSession(session);
-if (prevIso) {
+if (prevIso && prevIso.lift === session.lift) {
   session.isolations = prevIso.isolations.map(i => ({ ...i }));
 }
     }

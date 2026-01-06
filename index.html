@@ -142,7 +142,42 @@ function isWeekLocked(week = currentWeek) {
 
   return null;
 }
-  
+  function getPreviousIsolationSession(currentSession) {
+
+  // 1️⃣ Same week, earlier sessions (ignore week type)
+  const weekSessions = getWeek();
+  const index = weekSessions.findIndex(s => s.id === currentSession.id);
+
+  for (let i = index - 1; i >= 0; i--) {
+    const s = weekSessions[i];
+    if (
+      s.completed &&
+      s.lift === currentSession.lift &&
+      s.isolations?.some(i => i.name)
+    ) {
+      return s;
+    }
+  }
+
+  // 2️⃣ Previous weeks (IGNORE week type)
+  for (let w = currentWeek - 1; w >= 1; w--) {
+    const sessions = db.weeks[w];
+    if (!sessions) continue;
+
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      if (
+        s.completed &&
+        s.lift === currentSession.lift &&
+        s.isolations?.some(i => i.name)
+      ) {
+        return s;
+      }
+    }
+  }
+
+  return null;
+}
 
 /* ================= SESSION OPS ================= */
 
@@ -202,10 +237,9 @@ if (weekTypeSelect) {
       !session.completed &&
       (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
     ) {
-      const prev = getPreviousSession(session);
-if (prev?.isolations?.some(i => i.name)) {
-  session.isolations = prev.isolations.map(i => ({ ...i }));
-}
+      const prevIso = getPreviousIsolationSession(session);
+if (prevIso) {
+  session.isolations = prevIso.isolations.map(i => ({ ...i }));
 }
     
     const card = document.createElement("div");
@@ -231,7 +265,15 @@ if (prev?.isolations?.some(i => i.name)) {
         prev.innerHTML += `${prevMain.notes}<br>`;
       }
     }
-
+const prevIsoSession = getPreviousIsolationSession(session);
+if (prevIsoSession) {
+  prev.innerHTML += "<em>Isolation:</em><br>";
+  prevIsoSession.isolations.forEach(i => {
+    if (i.name) {
+      prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
+    }
+  });
+}
     const curr = document.createElement("div");
     curr.className = "curr";
 

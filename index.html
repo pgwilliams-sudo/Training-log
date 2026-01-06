@@ -37,6 +37,14 @@ button{cursor:pointer}
     <strong id="weekTitle">Week 1</strong>
     <button onclick="changeWeek(1)">▶</button>
 
+    <select id="weekTypeSelect" onchange="setWeekType(this.value)">
+  <option value="GVT">GVT</option>
+  <option value="Core">Core</option>
+  <option value="Pause">Pause</option>
+  <option value="Tempo">Tempo</option>
+  <option value="Other">Other</option>
+</select>
+
     <button onclick="addSession()">Add Session</button>
     <button onclick="cycleComplete()">Cycle Complete</button>
 
@@ -83,7 +91,19 @@ function getWeek(){
   return db.weeks[currentWeek];
 }
 
+function isWeekLocked(week = currentWeek) {
+  const sessions = db.weeks[week];
+  if (!sessions) return false;
+  return sessions.some(s => s.completed);
+}
 
+  function setWeekType(type, week = currentWeek) {
+  if (!db.weekTypes) db.weekTypes = {};
+  if (isWeekLocked(week)) return; // hard lock
+  db.weekTypes[week] = type;
+  saveDB();
+  render();
+}
 
   function getPreviousSession(currentSession) {
   const currentWeekType = getWeekType();
@@ -165,6 +185,16 @@ function render(){
   document.getElementById("weekTitle").textContent = `Week ${currentWeek}`;
   renderWeekButtons();
 
+const weekTypeSelect = document.getElementById("weekTypeSelect");
+if (weekTypeSelect) {
+  weekTypeSelect.value = getWeekType();
+  weekTypeSelect.disabled = isWeekLocked();
+}
+
+  select:disabled {
+  background: #f3f4f6;
+  opacity: 0.8;
+}
   const c = document.getElementById("sessions");
   c.innerHTML = "";
 

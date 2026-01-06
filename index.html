@@ -321,10 +321,10 @@ getWeek().forEach(session => {
       curr.innerHTML += `
         <div class="set">
           ${i+1}
-          <input type="number" value="${set.w}" ${session.completed?"disabled":""}
-            onblur="updateSet('${session.id}',${i},'w',this.value)">
-          <input type="number" value="${set.r}" ${session.completed?"disabled":""}
-            onblur="updateSet('${session.id}',${i},'r',this.value)">
+          <input type="number" placeholder="kg" value="${set.w}" ${session.completed?"disabled":""}
+  onblur="updateSet('${session.id}',${i},'w',this.value)">
+<input type="number" placeholder="reps" value="${set.r}" ${session.completed?"disabled":""}
+  onblur="updateSet('${session.id}',${i},'r',this.value)">
         </div>
       `;
     });

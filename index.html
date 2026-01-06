@@ -266,9 +266,15 @@ if (weekTypeSelect) {
 getWeek().forEach(session => {
   hydrateSessionFromHistory(session);
 
+delete session._prevMain;
+delete session._prevIso;
+  
   const card = document.createElement("div");
   card.className = "card" + (session.completed ? " locked" : "");
 
+  const prevIso = getPreviousIsolationSession(session);
+session._prevIso = prevIso || null;
+  
   const prev = document.createElement("div");
   prev.className = "prev";
   prev.innerHTML = "<strong>Previous</strong><br>";
@@ -287,15 +293,14 @@ getWeek().forEach(session => {
     }
   }
 
-  if (session.isolationLift === session.lift) {
-    const isoLines = session.isolations.filter(i => i.name);
-    if (isoLines.length) {
-      prev.innerHTML += "<em>Isolation:</em><br>";
-      isoLines.forEach(i => {
-        prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
-      });
+  if (session._prevIso) {
+  prev.innerHTML += "<em>Isolation:</em><br>";
+  session._prevIso.isolations.forEach(i => {
+    if (i.name) {
+      prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
     }
-  }
+  });
+}
     
     const curr = document.createElement("div");
     curr.className = "curr";

@@ -142,6 +142,39 @@ function isWeekLocked(week = currentWeek) {
 
   return null;
 }
+
+function hydrateSessionFromHistory(session) {
+  if (session.completed) return;
+
+  /* ================= MAIN LIFT ================= */
+
+  const prevMain = getPreviousSession(session);
+  session._prevMain = prevMain || null;
+
+  /* ================= ISOLATIONS ================= */
+
+  // If lift changed, isolation data is invalid
+  if (session.isolationLift && session.isolationLift !== session.lift) {
+    session.isolations = [{},{},{}];
+    delete session.isolationLift;
+  }
+
+  const hasIsolationData = session.isolations?.some(i => i.name);
+
+  if (!hasIsolationData) {
+    const prevIso = getPreviousIsolationSession(session);
+
+    if (
+      prevIso &&
+      prevIso.lift === session.lift &&
+      prevIso.isolations?.some(i => i.name)
+    ) {
+      session.isolations = prevIso.isolations.map(i => ({ ...i }));
+      session.isolationLift = session.lift;
+    }
+  }
+}
+  
   function getPreviousIsolationSession(currentSession) {
 
   // 1️⃣ Same week, earlier sessions (ignore week type)
@@ -229,30 +262,43 @@ if (weekTypeSelect) {
   
   const c = document.getElementById("sessions");
   c.innerHTML = "";
-
+hydrateSessionFromHistory(session);
   getWeek().forEach(session => {
-
-    // ---- Isolation carry-over (safe, edit-proof) ----
-    if (
-      !session.completed &&
-      (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
-    ) {
-      const prevIso = getPreviousIsolationSession(session);
-if (prevIso && prevIso.lift === session.lift) {
-  session.isolations = prevIso.isolations.map(i => ({ ...i }));
-}
-    }
     
     const card = document.createElement("div");
     card.className = "card" + (session.completed ? " locked" : "");
 
     const prev = document.createElement("div");
-    prev.className = "prev";
-    prev.innerHTML = "<strong>Previous</strong><br>";
+prev.className = "prev";
+prev.innerHTML = "<strong>Previous</strong><br>";
+
+if (session._prevMain) {
+  prev.innerHTML += "<em>Main:</em><br>";
+  session._prevMain.sets.forEach(set => {
+    if (set.w || set.r) {
+      prev.innerHTML += `${set.w || ""} × ${set.r || ""}<br>`;
+    }
+  });
+
+  if (session._prevMain.notes) {
+    prev.innerHTML += "<em>Notes:</em><br>";
+    prev.innerHTML += `${session._prevMain.notes}<br>`;
+  }
+}
+
+if (session.isolationLift === session.lift) {
+  const isoLines = session.isolations.filter(i => i.name);
+  if (isoLines.length) {
+    prev.innerHTML += "<em>Isolation:</em><br>";
+    isoLines.forEach(i => {
+      prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
+    });
+  }
+}
     
     
     // ---- Previous main lift ----
-    const prevMain = getPreviousSession(session);
+
     if (prevMain) {
       prev.innerHTML += "<em>Main:</em><br>";
       prevMain.sets.forEach(set => {
@@ -266,7 +312,7 @@ if (prevIso && prevIso.lift === session.lift) {
         prev.innerHTML += `${prevMain.notes}<br>`;
       }
     }
-const prevIsoSession = getPreviousIsolationSession(session);
+
 if (prevIsoSession) {
   prev.innerHTML += "<em>Isolation:</em><br>";
   prevIsoSession.isolations.forEach(i => {
@@ -338,10 +384,14 @@ function updateLift(id, v){
   const s = getWeek().find(x => x.id === id);
   if (!s) return;
 
-  s.lift = v;
+  if (s.lift !== v) {
+    s.lift = v;
+    s.isolations = [{},{},{}];
+    delete s.isolationLift;
+  }
 
   saveDB();
-  render(); // 🔑 force previous-session re-evaluation
+  render();
 }
 function updateSet(id,i,f,v){getWeek().find(s=>s.id===id).sets[i][f]=v;saveDB()}
 function updateIso(id,i,f,v){getWeek().find(s=>s.id===id).isolations[i][f]=v;saveDB()}

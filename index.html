@@ -291,7 +291,15 @@ if (prev?.isolations?.some(i => i.name)) {
   
 /* ================= UPDATES ================= */
 
-function updateLift(id,v){getWeek().find(s=>s.id===id).lift=v;saveDB()}
+function updateLift(id, v){
+  const s = getWeek().find(x => x.id === id);
+  if (!s) return;
+
+  s.lift = v;
+
+  saveDB();
+  render(); // 🔑 force previous-session re-evaluation
+}
 function updateSet(id,i,f,v){getWeek().find(s=>s.id===id).sets[i][f]=v;saveDB()}
 function updateIso(id,i,f,v){getWeek().find(s=>s.id===id).isolations[i][f]=v;saveDB()}
 function updateNotes(id,v){getWeek().find(s=>s.id===id).notes=v;saveDB()}

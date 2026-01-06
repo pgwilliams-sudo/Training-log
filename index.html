@@ -431,13 +431,27 @@ function renderWeekButtons(){
   }
 }
 
-function cycleComplete(){
-  if(confirm(`Cycle ${db.cycle} complete. Backup now?`)){
-    exportData();
-  }
+function cycleComplete() {
+  if (!confirm(`Cycle ${db.cycle} complete. Backup now?`)) return;
+
+  // 1️⃣ Export backup
+  exportData();
+
+  // 2️⃣ Advance cycle number
   db.cycle++;
+
+  // 3️⃣ Wipe all training data
+  db.weeks = {};
+  db.weekTypes = {};
+
+  // 4️⃣ Reset UI state
+  currentWeek = 1;
+
+  // 5️⃣ Save + re-render
   saveDB();
-  alert("Cycle advanced.");
+  render();
+
+  alert(`Cycle ${db.cycle - 1} archived. New cycle started.`);
 }
 
 function resetAll(){

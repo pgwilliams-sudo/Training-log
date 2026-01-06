@@ -31,7 +31,9 @@ button{cursor:pointer}
 <!-- HEADER -->
 <div class="card">
   <h2>GymTrack</h2>
-
+<div>
+  <strong>Cycle:</strong> <span id="cycleNumber"></span>
+</div>
   <div class="row">
     <button onclick="changeWeek(-1)">◀</button>
     <strong id="weekTitle">Week 1</strong>
@@ -144,9 +146,10 @@ function isWeekLocked(week = currentWeek) {
 }
 
 function hydrateSessionFromHistory(session) {
-  if (session.completed) return;
+  
 delete session._prevMain;
 delete session._prevIso;
+  if (session.completed) return;
   const prevIso = getPreviousIsolationSession(session);
 session._prevIso = prevIso || null;
   
@@ -257,7 +260,7 @@ function editSession(id){
 function render(){
   document.getElementById("weekTitle").textContent = `Week ${currentWeek}`;
   renderWeekButtons();
-
+document.getElementById("cycleNumber").textContent = db.cycle;
 const weekTypeSelect = document.getElementById("weekTypeSelect");
 if (weekTypeSelect) {
   weekTypeSelect.value = getWeekType();

@@ -225,6 +225,7 @@ function addSession(){
   getWeek().push({
     id: crypto.randomUUID(),
     lift: "Squat",
+    mainsets: "",
     sets: Array.from({length:5},()=>({w:"",r:""})),
     isolations: [{},{},{}],
 isolationLift: null,
@@ -316,7 +317,19 @@ getWeek().forEach(session => {
         ${LIFTS.map(l => `<option ${l===session.lift?"selected":""}>${l}</option>`).join("")}
       </select>
     `;
+const isGVT = getWeekType() === "GVT";
 
+if (isGVT) {
+  curr.innerHTML += `
+    <div class="set">
+      Sets
+      <input type="number" placeholder="e.g. 10"
+        value="${session.mainSets || ""}"
+        ${session.completed ? "disabled" : ""}
+        onblur="updateMainSets('${session.id}', this.value)">
+    </div>
+  `;
+}
     session.sets.forEach((set,i) => {
       curr.innerHTML += `
         <div class="set">
@@ -382,7 +395,12 @@ function updateLift(id, v){
 function updateSet(id,i,f,v){getWeek().find(s=>s.id===id).sets[i][f]=v;saveDB()}
 function updateIso(id,i,f,v){getWeek().find(s=>s.id===id).isolations[i][f]=v;saveDB()}
 function updateNotes(id,v){getWeek().find(s=>s.id===id).notes=v;saveDB()}
-
+function updateMainSets(id, v){
+  const s = getWeek().find(x => x.id === id);
+  if (!s) return;
+  s.mainSets = v;
+  saveDB();
+}
 /* ================= HEADER ================= */
 
 function changeWeek(d){
@@ -412,11 +430,13 @@ function cycleComplete(){
 }
 
 function resetAll(){
-  if(confirm("Delete all data?")){
-    localStorage.clear();
-    location.reload();
-  }
+  if (!confirm("Are you sure you want to delete ALL data?")) return;
+  if (!confirm("This cannot be undone. Really reset everything?")) return;
+
+  localStorage.clear();
+  location.reload();
 }
+
 
 /* ================= IMPORT / EXPORT ================= */
 

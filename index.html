@@ -69,7 +69,13 @@ let db = JSON.parse(localStorage.getItem("db")) || {
 function saveDB(){
   localStorage.setItem("db", JSON.stringify(db));
 }
+const WEEK_TYPES = ["GVT","Core","Pause","Tempo","Other"];
 
+function getWeekType(week = currentWeek) {
+  if (!db.weekTypes) db.weekTypes = {};
+  if (!db.weekTypes[week]) db.weekTypes[week] = "Core";
+  return db.weekTypes[week];
+}
 /* ================= HELPERS ================= */
 
 function getWeek(){
@@ -77,65 +83,29 @@ function getWeek(){
   return db.weeks[currentWeek];
 }
 
-function mostRecentIsolation(lift){
-  for(let w=currentWeek-1; w>=1; w--){
-    const week = db.weeks[w];
-    if(!week) continue;
-    for(const s of week){
-      if(s.lift===lift && s.completed && s.isolations){
-        return s.isolations.map(i=>({...i}));
-      }
-    }
-  }
-  return [{},{},{}];
-}
 
-  function getPreviousMainSession(currentSession) {
-  const weekSessions = db.weeks[currentWeek] || [];
-  const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
+
+  function getPreviousSession(currentSession) {
+  const currentWeekType = getWeekType();
 
   // 1️⃣ Same week, earlier sessions
-  for (let i = currentIndex - 1; i >= 0; i--) {
-    const s = weekSessions[i];
-    if (s.completed && s.lift === currentSession.lift) {
-      return s;
-    }
-  }
+  const weekSessions = getWeek();
+  const index = weekSessions.findIndex(s => s.id === currentSession.id);
 
-  // 2️⃣ Previous weeks
-  for (let w = currentWeek - 1; w >= 1; w--) {
-    const sessions = db.weeks[w];
-    if (!sessions) continue;
-
-    for (let i = sessions.length - 1; i >= 0; i--) {
-      const s = sessions[i];
-      if (s.completed && s.lift === currentSession.lift) {
-        return s;
-      }
-    }
-  }
-
-  return null;
-}
-  function getPreviousIsolationSession(currentSession) {
-  const weekSessions = db.weeks[currentWeek] || [];
-  const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
-
-  // 1️⃣ Same week, earlier sessions
-  for (let i = currentIndex - 1; i >= 0; i--) {
+  for (let i = index - 1; i >= 0; i--) {
     const s = weekSessions[i];
     if (
       s.completed &&
-      s.lift === currentSession.lift &&
-      s.isolations &&
-      s.isolations.some(i => i.name)
+      s.lift === currentSession.lift
     ) {
       return s;
     }
   }
 
-  // 2️⃣ Previous weeks
+  // 2️⃣ Previous weeks (same week type only)
   for (let w = currentWeek - 1; w >= 1; w--) {
+    if (getWeekType(w) !== currentWeekType) continue;
+
     const sessions = db.weeks[w];
     if (!sessions) continue;
 
@@ -143,9 +113,7 @@ function mostRecentIsolation(lift){
       const s = sessions[i];
       if (
         s.completed &&
-        s.lift === currentSession.lift &&
-        s.isolations &&
-        s.isolations.some(i => i.name)
+        s.lift === currentSession.lift
       ) {
         return s;
       }
@@ -154,6 +122,8 @@ function mostRecentIsolation(lift){
 
   return null;
 }
+  
+
 /* ================= SESSION OPS ================= */
 
 function addSession(){
@@ -205,10 +175,12 @@ function render(){
       !session.completed &&
       (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
     ) {
-      const prev = mostRecentIsolation(session.lift);
-      session.isolations = prev.map(i => ({ ...i }));
-    }
-
+      const prev = getPreviousSession(session);
+if (prev?.isolations?.some(i => i.name)) {
+  session.isolations = prev.isolations.map(i => ({ ...i }));
+}
+}
+    
     const card = document.createElement("div");
     card.className = "card" + (session.completed ? " locked" : "");
 
@@ -217,7 +189,7 @@ function render(){
     prev.innerHTML = "<strong>Previous</strong><br>";
 
     // ---- Previous main lift ----
-    const prevMain = getPreviousMainSession(session);
+    const prevMain = getPreviousSession(session);
     if (prevMain) {
       prev.innerHTML += "<em>Main:</em><br>";
       prevMain.sets.forEach(set => {
@@ -230,17 +202,6 @@ function render(){
         prev.innerHTML += "<em>Notes:</em><br>";
         prev.innerHTML += `${prevMain.notes}<br>`;
       }
-    }
-
-    // ---- Previous isolation ----
-    const prevIsoSession = getPreviousIsolationSession(session);
-    if (prevIsoSession) {
-      prev.innerHTML += "<em>Isolation:</em><br>";
-      prevIsoSession.isolations.forEach(i => {
-        if (i.name) {
-          prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
-        }
-      });
     }
 
     const curr = document.createElement("div");
@@ -296,9 +257,7 @@ function render(){
     card.append(row);
     c.append(card);
   });
-
-  saveDB();
-}
+  }
 /* ================= UPDATES ================= */
 
 function updateLift(id,v){getWeek().find(s=>s.id===id).lift=v;saveDB()}

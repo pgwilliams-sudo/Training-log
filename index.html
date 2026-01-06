@@ -286,18 +286,29 @@ getWeek().forEach(session => {
   prev.innerHTML = "<strong>Previous</strong><br>";
 
   if (session._prevMain) {
-    prev.innerHTML += "<em>Main:</em><br>";
+  prev.innerHTML += "<em>Main:</em><br>";
+
+  const isGVT = getWeekType() === "GVT";
+
+  if (isGVT && session._prevMain.mainSets) {
+    const firstSet = session._prevMain.sets.find(s => s.w || s.r);
+
+    if (firstSet) {
+      prev.innerHTML += `${session._prevMain.mainSets} @ ${firstSet.w || ""} × ${firstSet.r || ""}<br>`;
+    }
+  } else {
     session._prevMain.sets.forEach(set => {
       if (set.w || set.r) {
         prev.innerHTML += `${set.w || ""} × ${set.r || ""}<br>`;
       }
     });
-
-    if (session._prevMain.notes) {
-      prev.innerHTML += "<em>Notes:</em><br>";
-      prev.innerHTML += `${session._prevMain.notes}<br>`;
-    }
   }
+
+  if (session._prevMain.notes) {
+    prev.innerHTML += "<em>Notes:</em><br>";
+    prev.innerHTML += `${session._prevMain.notes}<br>`;
+  }
+}
 
   if (session._prevIso) {
   prev.innerHTML += "<em>Isolation:</em><br>";

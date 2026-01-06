@@ -187,7 +187,9 @@ if (prev?.isolations?.some(i => i.name)) {
     const prev = document.createElement("div");
     prev.className = "prev";
     prev.innerHTML = "<strong>Previous</strong><br>";
-
+    
+saveDB();
+    
     // ---- Previous main lift ----
     const prevMain = getPreviousSession(session);
     if (prevMain) {
@@ -258,6 +260,8 @@ if (prev?.isolations?.some(i => i.name)) {
     c.append(card);
   });
   }
+
+  
 /* ================= UPDATES ================= */
 
 function updateLift(id,v){getWeek().find(s=>s.id===id).lift=v;saveDB()}

@@ -215,7 +215,6 @@ if (prev?.isolations?.some(i => i.name)) {
     prev.className = "prev";
     prev.innerHTML = "<strong>Previous</strong><br>";
     
-saveDB();
     
     // ---- Previous main lift ----
     const prevMain = getPreviousSession(session);
@@ -269,6 +268,7 @@ saveDB();
         </div>
       `;
     });
+  }
 
     curr.innerHTML += `
       <textarea ${session.completed?"disabled":""}

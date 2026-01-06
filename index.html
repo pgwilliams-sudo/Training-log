@@ -145,7 +145,11 @@ function isWeekLocked(week = currentWeek) {
 
 function hydrateSessionFromHistory(session) {
   if (session.completed) return;
-
+delete session._prevMain;
+delete session._prevIso;
+  const prevIso = getPreviousIsolationSession(session);
+session._prevIso = prevIso || null;
+  
   /* ================= MAIN LIFT ================= */
 
   const prevMain = getPreviousSession(session);
@@ -266,14 +270,12 @@ if (weekTypeSelect) {
 getWeek().forEach(session => {
   hydrateSessionFromHistory(session);
 
-delete session._prevMain;
-delete session._prevIso;
+
   
   const card = document.createElement("div");
   card.className = "card" + (session.completed ? " locked" : "");
 
-  const prevIso = getPreviousIsolationSession(session);
-session._prevIso = prevIso || null;
+  
   
   const prev = document.createElement("div");
   prev.className = "prev";

@@ -89,33 +89,7 @@ function mostRecentIsolation(lift){
   }
   return [{},{},{}];
 }
-function findPreviousMainSession(currentSession) {
-  const weekSessions = getWeek();
-  const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
 
-  // 1. Same week, earlier sessions
-  for (let i = currentIndex - 1; i >= 0; i--) {
-    const s = weekSessions[i];
-    if (s.completed && s.lift === currentSession.lift) {
-      return s;
-    }
-  }
-
-  // 2. Previous weeks
-  for (let w = currentWeek - 1; w >= 1; w--) {
-    const week = db.weeks[w];
-    if (!week) continue;
-
-    for (let i = week.length - 1; i >= 0; i--) {
-      const s = week[i];
-      if (s.completed && s.lift === currentSession.lift) {
-        return s;
-      }
-    }
-  }
-
-  return null;
-}
   function getPreviousMainSession(currentSession) {
   const weekSessions = db.weeks[currentWeek] || [];
   const currentIndex = weekSessions.findIndex(s => s.id === currentSession.id);
@@ -215,7 +189,7 @@ function editSession(id){
   render();
 }
 
-/* ================= RENDER ================= */
+   // ---- RENDER ----
 
 function render(){
   document.getElementById("weekTitle").textContent = `Week ${currentWeek}`;
@@ -225,64 +199,62 @@ function render(){
   c.innerHTML = "";
 
   getWeek().forEach(session => {
-  if (
-    !session.completed &&
-    (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
-  ) {
-    const prev = mostRecentIsolation(session.lift);
 
-    session.isolations = prev
-      ? prev.map(i => ({ ...i }))
-      : [{}, {}, {}];
-  }
-});
+    // ---- Isolation carry-over (safe, edit-proof) ----
+    if (
+      !session.completed &&
+      (!session.isolations || !session.isolations[0] || !session.isolations[0].name)
+    ) {
+      const prev = mostRecentIsolation(session.lift);
+      session.isolations = prev.map(i => ({ ...i }));
+    }
 
     const card = document.createElement("div");
-    card.className = "card" + (session.completed?" locked":"");
+    card.className = "card" + (session.completed ? " locked" : "");
 
     const prev = document.createElement("div");
     prev.className = "prev";
     prev.innerHTML = "<strong>Previous</strong><br>";
-    mostRecentIsolation(session.lift).forEach(i=>{
-      if(i.name) prev.innerHTML+=`${i.name} ${i.sets||""}×${i.reps||""}@${i.weight||""}<br>`;
-    });
-const prevMain = getPreviousMainSession(session);
 
-if (prevMain) {
-  prev.innerHTML += '<em>Main:</em><br>';
-  prevMain.sets.forEach(set => {
-    if (set.w || set.r) {
-      prev.innerHTML += `${set.w || ''} × ${set.r || ''}<br>`;
+    // ---- Previous main lift ----
+    const prevMain = getPreviousMainSession(session);
+    if (prevMain) {
+      prev.innerHTML += "<em>Main:</em><br>";
+      prevMain.sets.forEach(set => {
+        if (set.w || set.r) {
+          prev.innerHTML += `${set.w || ""} × ${set.r || ""}<br>`;
+        }
+      });
+
+      if (prevMain.notes) {
+        prev.innerHTML += "<em>Notes:</em><br>";
+        prev.innerHTML += `${prevMain.notes}<br>`;
+      }
     }
-  });
 
-  if (prevMain.notes) {
-    prev.innerHTML += '<em>Notes:</em><br>';
-    prev.innerHTML += `${prevMain.notes}<br>`;
-  }
-}
+    // ---- Previous isolation ----
     const prevIsoSession = getPreviousIsolationSession(session);
-
-if (prevIsoSession) {
-  prev.innerHTML += '<em>Isolation:</em><br>';
-  prevIsoSession.isolations.forEach(i => {
-    if (i.name) {
-      prev.innerHTML += `${i.name} ${i.sets || ''}×${i.reps || ''}@${i.weight || ''}<br>`;
+    if (prevIsoSession) {
+      prev.innerHTML += "<em>Isolation:</em><br>";
+      prevIsoSession.isolations.forEach(i => {
+        if (i.name) {
+          prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
+        }
+      });
     }
-  });
-}
-    const curr = document.createElement("div");
-    curr.className="curr";
 
-    curr.innerHTML+=`
-      <select ${session.completed?"disabled":""}
+    const curr = document.createElement("div");
+    curr.className = "curr";
+
+    curr.innerHTML += `
+      <select ${session.completed ? "disabled" : ""}
         onchange="updateLift('${session.id}',this.value)">
-        ${LIFTS.map(l=>`<option ${l===session.lift?"selected":""}>${l}</option>`).join("")}
+        ${LIFTS.map(l => `<option ${l===session.lift?"selected":""}>${l}</option>`).join("")}
       </select>
     `;
 
-    session.sets.forEach((set,i)=>{
-      curr.innerHTML+=`
+    session.sets.forEach((set,i) => {
+      curr.innerHTML += `
         <div class="set">
           ${i+1}
           <input type="number" value="${set.w}" ${session.completed?"disabled":""}
@@ -293,8 +265,8 @@ if (prevIsoSession) {
       `;
     });
 
-    session.isolations.forEach((iso,i)=>{
-      curr.innerHTML+=`
+    session.isolations.forEach((iso,i) => {
+      curr.innerHTML += `
         <div class="iso">
           <input placeholder="Exercise" value="${iso.name||""}" ${session.completed?"disabled":""}
             onblur="updateIso('${session.id}',${i},'name',this.value)">
@@ -308,24 +280,25 @@ if (prevIsoSession) {
       `;
     });
 
-    curr.innerHTML+=`
+    curr.innerHTML += `
       <textarea ${session.completed?"disabled":""}
         onblur="updateNotes('${session.id}',this.value)">${session.notes}</textarea>
     `;
 
-    curr.innerHTML+= session.completed
+    curr.innerHTML += session.completed
       ? `<button onclick="editSession('${session.id}')">Edit</button>`
       : `<button onclick="completeSession('${session.id}')">Complete</button>
          <button onclick="deleteSession('${session.id}')">Delete</button>`;
 
-    const row=document.createElement("div");
-    row.className="row";
-    row.append(prev,curr);
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(prev, curr);
     card.append(row);
     c.append(card);
   });
-}
 
+  saveDB();
+}
 /* ================= UPDATES ================= */
 
 function updateLift(id,v){getWeek().find(s=>s.id===id).lift=v;saveDB()}

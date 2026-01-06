@@ -220,6 +220,7 @@ function addSession(){
     lift: "Squat",
     sets: Array.from({length:5},()=>({w:"",r:""})),
     isolations: [{},{},{}],
+isolationLift: null,
     notes:"",
     completed:false
   });
@@ -262,65 +263,44 @@ if (weekTypeSelect) {
   
   const c = document.getElementById("sessions");
   c.innerHTML = "";
-hydrateSessionFromHistory(session);
-  getWeek().forEach(session => {
-    
-    const card = document.createElement("div");
-    card.className = "card" + (session.completed ? " locked" : "");
+getWeek().forEach(session => {
+  hydrateSessionFromHistory(session);
 
-    const prev = document.createElement("div");
-prev.className = "prev";
-prev.innerHTML = "<strong>Previous</strong><br>";
+  const card = document.createElement("div");
+  card.className = "card" + (session.completed ? " locked" : "");
 
-if (session._prevMain) {
-  prev.innerHTML += "<em>Main:</em><br>";
-  session._prevMain.sets.forEach(set => {
-    if (set.w || set.r) {
-      prev.innerHTML += `${set.w || ""} × ${set.r || ""}<br>`;
-    }
-  });
+  const prev = document.createElement("div");
+  prev.className = "prev";
+  prev.innerHTML = "<strong>Previous</strong><br>";
 
-  if (session._prevMain.notes) {
-    prev.innerHTML += "<em>Notes:</em><br>";
-    prev.innerHTML += `${session._prevMain.notes}<br>`;
-  }
-}
-
-if (session.isolationLift === session.lift) {
-  const isoLines = session.isolations.filter(i => i.name);
-  if (isoLines.length) {
-    prev.innerHTML += "<em>Isolation:</em><br>";
-    isoLines.forEach(i => {
-      prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
-    });
-  }
-}
-    
-    
-    // ---- Previous main lift ----
-
-    if (prevMain) {
-      prev.innerHTML += "<em>Main:</em><br>";
-      prevMain.sets.forEach(set => {
-        if (set.w || set.r) {
-          prev.innerHTML += `${set.w || ""} × ${set.r || ""}<br>`;
-        }
-      });
-
-      if (prevMain.notes) {
-        prev.innerHTML += "<em>Notes:</em><br>";
-        prev.innerHTML += `${prevMain.notes}<br>`;
+  if (session._prevMain) {
+    prev.innerHTML += "<em>Main:</em><br>";
+    session._prevMain.sets.forEach(set => {
+      if (set.w || set.r) {
+        prev.innerHTML += `${set.w || ""} × ${set.r || ""}<br>`;
       }
-    }
+    });
 
-if (prevIsoSession) {
-  prev.innerHTML += "<em>Isolation:</em><br>";
-  prevIsoSession.isolations.forEach(i => {
-    if (i.name) {
-      prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
+    if (session._prevMain.notes) {
+      prev.innerHTML += "<em>Notes:</em><br>";
+      prev.innerHTML += `${session._prevMain.notes}<br>`;
     }
-  });
-}
+  }
+
+  if (session.isolationLift === session.lift) {
+    const isoLines = session.isolations.filter(i => i.name);
+    if (isoLines.length) {
+      prev.innerHTML += "<em>Isolation:</em><br>";
+      isoLines.forEach(i => {
+        prev.innerHTML += `${i.name} ${i.sets || ""}×${i.reps || ""}@${i.weight || ""}<br>`;
+      });
+    }
+  }
+
+  ...
+});
+    
+    
     const curr = document.createElement("div");
     curr.className = "curr";
 

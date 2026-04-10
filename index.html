@@ -12,7 +12,8 @@
 body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;background:#f5f5f5;margin:0;padding:10px}
 .card{background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
-button,select,input,textarea{padding:6px;border-radius:6px;border:1px solid #ccc;font-size:.85rem}
+button,select,input,textarea{padding:4px;border-radius:6px;border:1px solid #ccc;font-size:.8rem}input[type="number"]{
+  width:60px;}
 button{cursor:pointer}
 .week-btn{padding:6px;border:none;border-radius:6px}
 .week-btn.active{background:#3b82f6;color:#fff}
@@ -23,6 +24,32 @@ button{cursor:pointer}
 .iso{background:#fafafa;padding:6px;border-radius:6px;margin-bottom:6px}
 .locked{opacity:.6}
 .hidden{display:none}
+  .curr{
+  background:#eef6ff;
+  padding:8px;
+  border-radius:6px;
+}
+
+.prev{
+  background:#f9fafb;
+}
+
+button{
+  background:#3b82f6;
+  color:white;
+  border:none;
+}
+
+button:hover{
+  opacity:0.9;
+}
+
+button[style*="ef4444"]{
+  background:#ef4444 !important;
+}
+  .card{
+  border-left:4px solid #3b82f6;
+}
 </style>
 </head>
 
@@ -70,7 +97,7 @@ button{cursor:pointer}
 const MAX_WEEKS = 12;
 let currentWeek = 1;
 
-const LIFTS = ["Squat","Bench","Deadlift","Row","Overhead Press"];
+const LIFTS = ["Squat","Bench","Deadlift","Row","Overhead Press","Open"];
 
 let db = JSON.parse(localStorage.getItem("db")) || {
   cycle: 1,

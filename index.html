@@ -223,7 +223,7 @@ session._prevIso = prevIso || null;
 /* ================= SESSION OPS ================= */
 
 function addSession(){
-  getWeek().push({
+  getWeek().unshift({
     id: crypto.randomUUID(),
     lift: "Squat",
     mainsets: "",
